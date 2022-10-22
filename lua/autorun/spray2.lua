@@ -470,6 +470,7 @@ hook.Add("PostDrawTranslucentRenderables", "sprayv2_preview", function()
 	if is_down then
 		local material = CurrentSpray:GetString()
 		if not CheckWhitelist(material) then return end
+
 		if favorites.selected and favorites.selected.nsfw and not showNSFW:GetBool() then
 			material = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/nsfw.png"
 		end
@@ -698,6 +699,7 @@ SpraySize = 64
 function Spray(ply, material, vec, norm, imgType, targetEnt, noSound, sprayData)
 	if not surface.URLImage then return end
 	if not IsValid(ply) then return end
+	if not CheckWhitelist(material) then return end
 
 	if sprayData and sprayData.nsfw and not showNSFW:GetBool() then
 		nsfwCache[ply:SteamID64()] = {ply, material, vec, norm, imgType, targetEnt, noSound, sprayData}
@@ -705,8 +707,6 @@ function Spray(ply, material, vec, norm, imgType, targetEnt, noSound, sprayData)
 	end
 
 	ply:StripSpray2()
-
-	if not CheckWhitelist(material) then return end
 	--local converterUrl = CONVERTER_URL .. "?url=" .. URLEncode(material) .. "&type=" .. ((imgType == "image/gif" or imgType == "vtf") and "vtf" or "png")
 	local mat = surface.URLImage(material)
 	local thinkKey = "URLDownload" .. ply:EntIndex()
@@ -1125,10 +1125,10 @@ function SprayPanel:PerformLayout()
 end
 
 function SprayPanel:Paint(pw, ph)
+	surface.SetDrawColor(Color(20, 20, 20))
+	surface.DrawRect(0, 0, pw, ph)
 	if self.Mat then
 		local w, h = self.Mat()
-		surface.SetDrawColor(Color(20, 20, 20))
-		surface.DrawRect(0, 0, pw, ph)
 		if w and h then
 			local x,y,w2,h2,ratio = 0, 0, 0, 0, 0
 			if w > h then
