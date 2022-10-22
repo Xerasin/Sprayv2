@@ -525,6 +525,13 @@ hook.Add("PostDrawTranslucentRenderables", "sprayv2_preview", function()
 		end
 
 		if w and h then
+			local scale_x, scale_y = 1, 1
+			if w > h then
+				scale_y = (h / w)
+			else
+				scale_x = (w / h)
+			end
+
 			spraycache[material] = {w, h, httpMat, LocalPlayer(), LocalPlayer():SteamID(), LocalPlayer():Nick(), material}
 
 			local up = Vector(0, 0, 1)
@@ -537,7 +544,7 @@ hook.Add("PostDrawTranslucentRenderables", "sprayv2_preview", function()
 				surface.SetAlphaMultiplier(0.5)
 				surface.SetMaterial(httpMat)
 				surface.SetDrawColor(Color(255, 255, 255))
-				surface.DrawTexturedRect(-32, -32, 64, 64)
+				surface.DrawTexturedRect(-32 * scale_x, -32 * scale_y, 64 * scale_x, 64 * scale_y)
 				surface.SetAlphaMultiplier(1)
 			cam.End3D2D()
 		else
@@ -708,7 +715,7 @@ function Spray(ply, material, vec, norm, imgType, targetEnt, noSound, sprayData)
 
 	ply:StripSpray2()
 	--local converterUrl = CONVERTER_URL .. "?url=" .. URLEncode(material) .. "&type=" .. ((imgType == "image/gif" or imgType == "vtf") and "vtf" or "png")
-	local mat = surface.URLImage(material)
+	local mat = surface.URLImage(material, "")
 	local thinkKey = "URLDownload" .. ply:EntIndex()
 	sprays[ply] = thinkKey
 	local loading2 = false
@@ -814,18 +821,24 @@ function Spray(ply, material, vec, norm, imgType, targetEnt, noSound, sprayData)
 				local matname = os.time() .. "SPRAYV2WHYDOIDO" .. math.random(1024)
 
 				local tempMat
+				local scale_x, scale_y = 1, 1
+				if w > h then
+					scale_y = 1 / (h / w)
+				else
+					scale_x = 1 / (w / h)
+				end
 
 		 		if IsValid(targetEnt) then
 					tempMat = CreateMaterial(matname, "VertexLitGeneric", {
 						["$basetexture"] = baseSprayMat:GetString("$basetexture"),
-						["$basetexturetransform"] = "center 0.5 0.5 scale 1 1 rotate 0 translate 0 0",
+						["$basetexturetransform"] = ("center 0.5 0.5 scale %s %s rotate 0 translate 0 0"):format(scale_x, scale_y),
 						["$vertexalpha"] = 1,
 						["$decal"] = 1
 					})
 				else
 					tempMat = CreateMaterial(matname, "LightmappedGeneric", {
 						["$basetexture"] = baseSprayMat:GetString("$basetexture"),
-						["$basetexturetransform"] = "center 0.5 0.5 scale 1 1 rotate 0 translate 0 0",
+						["$basetexturetransform"] = ("center 0.5 0.5 scale %s %s rotate 0 translate 0 0"):format(scale_x, scale_y),
 						["$vertexcolor"] = 1,
 						["$vertexalpha"] = 1,
 						["$transparent"] = 1,
