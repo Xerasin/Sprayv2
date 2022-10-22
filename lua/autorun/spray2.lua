@@ -26,6 +26,204 @@ local function URLEncode(s)
 
 	return new
 end
+---------------------------------------------
+-- https://github.com/Metastruct/gurl/	 --
+---------------------------------------------
+local URLWhiteList = {}
+
+local TYPE_SIMPLE = 1
+local TYPE_PATTERN = 2
+local TYPE_BLACKLIST = 4
+
+local function pattern(pattern)
+	URLWhiteList[#URLWhiteList + 1] = {TYPE_PATTERN, "^http[s]?://" .. pattern}
+end
+local function simple(txt)
+	URLWhiteList[#URLWhiteList + 1] = {TYPE_SIMPLE, "^http[s]?://" .. txt}
+end
+local function blacklist(txt)
+	URLWhiteList[#URLWhiteList + 1] = {TYPE_BLACKLIST, txt}
+end
+
+
+simple [[www.dropbox.com/s/]]
+simple [[dl.dropboxusercontent.com/]]
+simple [[dl.dropbox.com/]] --Sometimes redirects to usercontent link
+
+-- OneDrive
+-- Examples: 
+-- https://onedrive.live.com/redir?resid=123!178&authkey=!gweg&v=3&ithint=abcd%2cefg
+
+simple [[onedrive.live.com/redir]]
+
+-- Google Drive
+--- Examples: 
+---  https://docs.google.com/uc?export=download&confirm=UYyi&id=0BxUpZqVaDxVPeENDM1RtZDRvaTA
+
+simple [[docs.google.com/uc]]
+simple [[drive.google.com/file/d/]]
+simple [[drive.google.com/u/0/uc]]
+simple [[drive.google.com/open]]
+
+
+-- Imgur
+--- Examples: 
+---  http://i.imgur.com/abcd123.xxx
+
+simple [[i.imgur.com/]]
+
+--[=[
+-- pastebin
+--- Examples: 
+---  http://pastebin.com/abcdef
+
+simple [[pastebin.com/]]
+]=]
+
+-- github / gist
+--- Examples: 
+---  https://gist.githubusercontent.com/LUModder/f2b1c0c9bf98224f9679/raw/5644006aae8f0a8b930ac312324f46dd43839189/sh_sbdc.lua
+---  https://raw.githubusercontent.com/LUModder/FWP/master/weapon_template.txt
+
+simple [[raw.githubusercontent.com/]]
+simple [[gist.githubusercontent.com/]]
+simple [[github.com/]]
+simple [[www.github.com/]]
+
+-- pomf
+-- note: there are a lot of forks of pomf so there are tons of sites. I only listed the mainly used ones. --Flex
+--- Examples: 
+---  https://my.mixtape.moe/gxiznr.png
+---  http://a.1339.cf/fppyhby.txt
+---  http://b.1339.cf/fppyhby.txt
+---  http://a.pomf.cat/jefjtb.txt
+
+simple [[my.mixtape.moe/]]
+simple [[a.1339.cf/]]
+simple [[b.1339.cf/]]
+simple [[a.pomf.cat/]]
+
+
+-- TinyPic
+--- Examples: 
+---  http://i68.tinypic.com/24b3was.gif
+pattern [[i(.+)%.tinypic%.com/]]
+
+--[=[
+-- paste.ee
+--- Examples: 
+---  https://paste.ee/r/J3jle
+simple [[paste.ee/]]
+
+
+-- hastebin
+--- Examples: 
+---  http://hastebin.com/icuvacogig.txt
+simple [[hastebin.com/]]
+]=]
+
+-- puush
+--- Examples:
+---  http://puu.sh/asd/qwe.obj
+simple [[puu.sh/]]
+
+-- Steam
+--- Examples:
+---  http://images.akamai.steamusercontent.com/ugc/367407720941694853/74457889F41A19BD66800C71663E9077FA440664/
+---  https://steamcdn-a.akamaihd.net/steamcommunity/public/images/apps/4000/dca12980667e32ab072d79f5dbe91884056a03a2.jpg
+simple [[images.akamai.steamusercontent.com/]]
+simple [[steamcdn-a.akamaihd.net/]]
+simple [[steamcommunity.com/]]
+simple [[www.steamcommunity.com/]]
+simple [[store.steampowered.com/]]
+blacklist [[steamcommunity.com/linkfilter/]]
+blacklist [[www.steamcommunity.com/linkfilter/]]
+
+---------------------------------------------
+-- https://github.com/thegrb93/StarfallEx/ --
+---------------------------------------------
+
+-- Discord
+--- Examples:
+---  https://cdn.discordapp.com/attachments/269175189382758400/421572398689550338/unknown.png
+---  https://images-ext-2.discordapp.net/external/UVPTeOLUWSiDXGwwtZ68cofxU1uaA2vMb2ZCjRY8XXU/https/i.imgur.com/j0QGfKN.jpg?width=1202&height=677
+
+pattern [[cdn[%w-_]*.discordapp%.com/(.+)]]
+pattern [[images-([%w%-]+)%.discordapp%.net/external/(.+)]]
+
+-- Reddit
+--- Examples:
+---  https://i.redd.it/u46wumt13an01.jpg
+---  https://i.redditmedia.com/RowF7of6hQJAdnJPfgsA-o7ioo_uUzhwX96bPmnLo0I.jpg?w=320&s=116b72a949b6e4b8ac6c42487ffb9ad2
+---  https://preview.redd.it/injjlk3t6lb51.jpg?width=640&height=800&crop=smart&auto=webp&s=19261cc37b68ae0216bb855f8d4a77ef92b76937
+
+simple [[i.redditmedia.com]]
+simple [[i.redd.it]]
+simple [[preview.redd.it]]
+--[=[
+-- Furry things
+--- Examples:
+--- https://static1.e621.net/data/8f/db/8fdbc9af34698d470c90ca6cb69c5529.jpg
+]=]
+
+simple [[static1.e621.net]]
+
+-- ipfs
+--- Examples:
+--- https://ipfs.io/ipfs/QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco/I/m/Ellis_Sigil.jpg
+
+simple [[ipfs.io]]
+simple [[www.ipfs.io]]
+
+-- neocities
+--- Examples:
+--- https://fauux.neocities.org/LainDressSlow.gif
+
+pattern [[([%w-_]+)%.neocities%.org/(.+)]]
+
+--[=[
+-- Soundcloud
+--- Examples:
+--- https://i1.sndcdn.com/artworks-000046176006-0xtkjy-large.jpg
+pattern [[(%w+)%.sndcdn%.com/(.+)]]
+
+-- Shoutcast
+--- Examples:
+--- http://yp.shoutcast.com/sbin/tunein-station.pls?id=567807
+simple [[yp.shoutcast.com]]
+
+-- Google Translate API
+--- Examples:
+--- http://translate.google.com/translate_tts?&q=Hello%20World&ie=utf-8&client=tw-ob&tl=en
+simple [[translate.google.com]]
+]=]
+
+
+-- END OF SHARED --
+
+
+function CheckWhitelist(url)
+	local out = 0x000
+	for _, testPattern in pairs(URLWhiteList) do
+		if testPattern[1] == TYPE_SIMPLE then
+			if string.find(url, testPattern[2]) then
+				out = bit.bor(out, TYPE_SIMPLE)
+			end
+		elseif testPattern[1] == TYPE_PATTERN then
+			if string.match(url, testPattern[2]) then
+				out = bit.bor(out, TYPE_PATTERN)
+			end
+		elseif testPattern[1] == TYPE_BLACKLIST then
+			if string.find(url, testPattern[2]) then
+				out = bit.bor(out, TYPE_BLACKLIST)
+			end
+		end
+	end
+
+	if bit.band(out, TYPE_BLACKLIST) == TYPE_BLACKLIST then return false end
+	if bit.band(out, TYPE_SIMPLE) == TYPE_SIMPLE or bit.band(out, TYPE_PATTERN) == TYPE_PATTERN then return true end
+	return false
+end
 
 if SERVER then
 	AddCSLuaFile()
@@ -106,7 +304,7 @@ if SERVER then
 
 		if (not self.LastSpray or (CurTime() - self.LastSpray) > 2.5) then
 			local trace = self:GetEyeTrace()
-			if IsValidSprayTrace(trace) then
+			if IsValidSprayTrace(trace) and CheckWhitelist(new_spray) then
 				self.LastSpray = CurTime()
 				--[[http.Fetch(GETSIZE_URL .. "?url=" .. URLEncode(new_spray), function(content)
 					local info = string.Explode(",", content)
@@ -140,7 +338,7 @@ local maxVertex = CreateClientConVar("sprayv2_entities_maxvertexes", "512", true
 local playSounds = CreateClientConVar("sprayv2_sounds", "1", true, false, nil, 0, 1)
 local showNSFW = CreateClientConVar("sprayv2_nsfw", "0", true, false, nil, 0, 1)
 
-local baseSprayURL = "http://sprays.xerasin.com/TestSpray3.png"
+local baseSprayURL = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/testbasespray.png"
 local baseSpray = function() end
 local loadingMat = function() end
 local function init()
@@ -271,6 +469,7 @@ hook.Add("PostDrawTranslucentRenderables", "sprayv2_preview", function()
 	if not surface.URLImage then return end
 	if is_down then
 		local material = CurrentSpray:GetString()
+		if not CheckWhitelist(material) then return end
 		if favorites.selected and favorites.selected.nsfw and not showNSFW:GetBool() then
 			material = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/nsfw.png"
 		end
@@ -507,6 +706,7 @@ function Spray(ply, material, vec, norm, imgType, targetEnt, noSound, sprayData)
 
 	ply:StripSpray2()
 
+	if not CheckWhitelist(material) then return end
 	--local converterUrl = CONVERTER_URL .. "?url=" .. URLEncode(material) .. "&type=" .. ((imgType == "image/gif" or imgType == "vtf") and "vtf" or "png")
 	local mat = surface.URLImage(material)
 	local thinkKey = "URLDownload" .. ply:EntIndex()
@@ -901,7 +1101,9 @@ function SprayPanel:SetSpray(str)
 		fileType = "vtf"
 	end
 	local converterUrl = CONVERTER_URL .. "?url=" .. URLEncode(str) .. "&type=" .. fileType]]
-	self.Mat = surface.URLImage(str)
+	if CheckWhitelist(str) then
+		self.Mat = surface.URLImage(str)
+	end
 end
 
 function SprayPanel:PerformLayout()
@@ -923,27 +1125,29 @@ function SprayPanel:PerformLayout()
 end
 
 function SprayPanel:Paint(pw, ph)
-	if not self.Mat then return end
-	local w, h = self.Mat()
-	surface.SetDrawColor(Color(20, 20, 20))
-	surface.DrawRect(0, 0, pw, ph)
-	if w and h then
-		local x,y,w2,h2,ratio = 0, 0, 0, 0, 0
-		if w > h then
-			ratio = w / h
-			w2 = pw
-			h2 = pw * 1 / ratio
-			y = (ph - h2) / 2
-		else
-			ratio = h / w
+	if self.Mat then
+		local w, h = self.Mat()
+		surface.SetDrawColor(Color(20, 20, 20))
+		surface.DrawRect(0, 0, pw, ph)
+		if w and h then
+			local x,y,w2,h2,ratio = 0, 0, 0, 0, 0
+			if w > h then
+				ratio = w / h
+				w2 = pw
+				h2 = pw * 1 / ratio
+				y = (ph - h2) / 2
+			else
+				ratio = h / w
 
-			h2 = ph
-			w2 = ph * 1 / ratio
-			x = (pw - w2) / 2
+				h2 = ph
+				w2 = ph * 1 / ratio
+				x = (pw - w2) / 2
+			end
+			surface.SetDrawColor(Color(255, 255, 255))
+			surface.DrawTexturedRect(x, y, w2, h2)
 		end
-		surface.SetDrawColor(Color(255, 255, 255))
-		surface.DrawTexturedRect(x, y, w2, h2)
 	end
+
 	if self.IsFolder then
 		draw.Text({
 			["pos"] = { pw / 2 , ph - 12 },
@@ -953,8 +1157,8 @@ function SprayPanel:Paint(pw, ph)
 			["xalign"] = TEXT_ALIGN_CENTER,
 			["yalign"] = TEXT_ALIGN_CENTER,
 		})
-
 	end
+
 	if CurrentSpray:GetString() == self.SprayURL then
 		surface.SetMaterial(self.Checkmark)
 		surface.SetDrawColor(Color(255, 255, 255))
@@ -1072,6 +1276,10 @@ concommand.Add("sprayv2_openfavorites", function()
 	function FavoritePanel.AddFavorite:DoClick()
 		Derma_StringRequest("Add a favorite", "URL","",function(text)
 			if text == "" then return end
+			if not CheckWhitelist(text) then
+				chat.AddText(Color(255, 255, 255), "Not a whitelisted Sprayv2 URL")
+				return
+			end
 
 			for k,v in pairs(currentFolder) do
 				if v.url == text then return end
