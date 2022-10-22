@@ -338,7 +338,7 @@ local maxVertex = CreateClientConVar("sprayv2_entities_maxvertexes", "512", true
 local playSounds = CreateClientConVar("sprayv2_sounds", "1", true, false, nil, 0, 1)
 local showNSFW = CreateClientConVar("sprayv2_nsfw", "0", true, false, nil, 0, 1)
 
-local baseSprayURL = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/testbasespray.png"
+local baseSprayURL = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/basespray.png"
 local baseSpray = function() end
 local loadingMat = function() end
 local function init()
