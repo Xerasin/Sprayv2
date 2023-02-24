@@ -1,7 +1,5 @@
 pcall(require, "urlimage")
-local CONVERTER_URL = "http://sprays.xerasin.com/getimage2.php"
-local GETSIZE_URL = "http://sprays.xerasin.com/getsize.php"
-local GIFINFO_URL = "http://sprays.xerasin.com/gifinfo.php"
+local SPRAYINFO_URL = "http://sprays.xerasin.com/?url=%s"
 
 module("spray2", package.seeall)
 local _M = _M
@@ -26,204 +24,7 @@ local function URLEncode(s)
 
 	return new
 end
----------------------------------------------
--- https://github.com/Metastruct/gurl/	 --
----------------------------------------------
-local URLWhiteList = {}
 
-local TYPE_SIMPLE = 1
-local TYPE_PATTERN = 2
-local TYPE_BLACKLIST = 4
-
-local function pattern(pattern)
-	URLWhiteList[#URLWhiteList + 1] = {TYPE_PATTERN, "^http[s]?://" .. pattern}
-end
-local function simple(txt)
-	URLWhiteList[#URLWhiteList + 1] = {TYPE_SIMPLE, "^http[s]?://" .. txt}
-end
-local function blacklist(txt)
-	URLWhiteList[#URLWhiteList + 1] = {TYPE_BLACKLIST, txt}
-end
-
-
-simple [[www.dropbox.com/s/]]
-simple [[dl.dropboxusercontent.com/]]
-simple [[dl.dropbox.com/]] --Sometimes redirects to usercontent link
-
--- OneDrive
--- Examples: 
--- https://onedrive.live.com/redir?resid=123!178&authkey=!gweg&v=3&ithint=abcd%2cefg
-
-simple [[onedrive.live.com/redir]]
-
--- Google Drive
---- Examples: 
----  https://docs.google.com/uc?export=download&confirm=UYyi&id=0BxUpZqVaDxVPeENDM1RtZDRvaTA
-
-simple [[docs.google.com/uc]]
-simple [[drive.google.com/file/d/]]
-simple [[drive.google.com/u/0/uc]]
-simple [[drive.google.com/open]]
-
-
--- Imgur
---- Examples: 
----  http://i.imgur.com/abcd123.xxx
-
-simple [[i.imgur.com/]]
-
---[=[
--- pastebin
---- Examples: 
----  http://pastebin.com/abcdef
-
-simple [[pastebin.com/]]
-]=]
-
--- github / gist
---- Examples: 
----  https://gist.githubusercontent.com/LUModder/f2b1c0c9bf98224f9679/raw/5644006aae8f0a8b930ac312324f46dd43839189/sh_sbdc.lua
----  https://raw.githubusercontent.com/LUModder/FWP/master/weapon_template.txt
-
-simple [[raw.githubusercontent.com/]]
-simple [[gist.githubusercontent.com/]]
-simple [[github.com/]]
-simple [[www.github.com/]]
-
--- pomf
--- note: there are a lot of forks of pomf so there are tons of sites. I only listed the mainly used ones. --Flex
---- Examples: 
----  https://my.mixtape.moe/gxiznr.png
----  http://a.1339.cf/fppyhby.txt
----  http://b.1339.cf/fppyhby.txt
----  http://a.pomf.cat/jefjtb.txt
-
-simple [[my.mixtape.moe/]]
-simple [[a.1339.cf/]]
-simple [[b.1339.cf/]]
-simple [[a.pomf.cat/]]
-
-
--- TinyPic
---- Examples: 
----  http://i68.tinypic.com/24b3was.gif
-pattern [[i(.+)%.tinypic%.com/]]
-
---[=[
--- paste.ee
---- Examples: 
----  https://paste.ee/r/J3jle
-simple [[paste.ee/]]
-
-
--- hastebin
---- Examples: 
----  http://hastebin.com/icuvacogig.txt
-simple [[hastebin.com/]]
-]=]
-
--- puush
---- Examples:
----  http://puu.sh/asd/qwe.obj
-simple [[puu.sh/]]
-
--- Steam
---- Examples:
----  http://images.akamai.steamusercontent.com/ugc/367407720941694853/74457889F41A19BD66800C71663E9077FA440664/
----  https://steamcdn-a.akamaihd.net/steamcommunity/public/images/apps/4000/dca12980667e32ab072d79f5dbe91884056a03a2.jpg
-simple [[images.akamai.steamusercontent.com/]]
-simple [[steamcdn-a.akamaihd.net/]]
-simple [[steamcommunity.com/]]
-simple [[www.steamcommunity.com/]]
-simple [[store.steampowered.com/]]
-blacklist [[steamcommunity.com/linkfilter/]]
-blacklist [[www.steamcommunity.com/linkfilter/]]
-
----------------------------------------------
--- https://github.com/thegrb93/StarfallEx/ --
----------------------------------------------
-
--- Discord
---- Examples:
----  https://cdn.discordapp.com/attachments/269175189382758400/421572398689550338/unknown.png
----  https://images-ext-2.discordapp.net/external/UVPTeOLUWSiDXGwwtZ68cofxU1uaA2vMb2ZCjRY8XXU/https/i.imgur.com/j0QGfKN.jpg?width=1202&height=677
-
-pattern [[cdn[%w-_]*.discordapp%.com/(.+)]]
-pattern [[images-([%w%-]+)%.discordapp%.net/external/(.+)]]
-
--- Reddit
---- Examples:
----  https://i.redd.it/u46wumt13an01.jpg
----  https://i.redditmedia.com/RowF7of6hQJAdnJPfgsA-o7ioo_uUzhwX96bPmnLo0I.jpg?w=320&s=116b72a949b6e4b8ac6c42487ffb9ad2
----  https://preview.redd.it/injjlk3t6lb51.jpg?width=640&height=800&crop=smart&auto=webp&s=19261cc37b68ae0216bb855f8d4a77ef92b76937
-
-simple [[i.redditmedia.com]]
-simple [[i.redd.it]]
-simple [[preview.redd.it]]
---[=[
--- Furry things
---- Examples:
---- https://static1.e621.net/data/8f/db/8fdbc9af34698d470c90ca6cb69c5529.jpg
-]=]
-
-simple [[static1.e621.net]]
-
--- ipfs
---- Examples:
---- https://ipfs.io/ipfs/QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco/I/m/Ellis_Sigil.jpg
-
-simple [[ipfs.io]]
-simple [[www.ipfs.io]]
-
--- neocities
---- Examples:
---- https://fauux.neocities.org/LainDressSlow.gif
-
-pattern [[([%w-_]+)%.neocities%.org/(.+)]]
-
---[=[
--- Soundcloud
---- Examples:
---- https://i1.sndcdn.com/artworks-000046176006-0xtkjy-large.jpg
-pattern [[(%w+)%.sndcdn%.com/(.+)]]
-
--- Shoutcast
---- Examples:
---- http://yp.shoutcast.com/sbin/tunein-station.pls?id=567807
-simple [[yp.shoutcast.com]]
-
--- Google Translate API
---- Examples:
---- http://translate.google.com/translate_tts?&q=Hello%20World&ie=utf-8&client=tw-ob&tl=en
-simple [[translate.google.com]]
-]=]
-
-
--- END OF SHARED --
-
-
-function CheckWhitelist(url)
-	local out = 0x000
-	for _, testPattern in pairs(URLWhiteList) do
-		if testPattern[1] == TYPE_SIMPLE then
-			if string.find(url, testPattern[2]) then
-				out = bit.bor(out, TYPE_SIMPLE)
-			end
-		elseif testPattern[1] == TYPE_PATTERN then
-			if string.match(url, testPattern[2]) then
-				out = bit.bor(out, TYPE_PATTERN)
-			end
-		elseif testPattern[1] == TYPE_BLACKLIST then
-			if string.find(url, testPattern[2]) then
-				out = bit.bor(out, TYPE_BLACKLIST)
-			end
-		end
-	end
-
-	if bit.band(out, TYPE_BLACKLIST) == TYPE_BLACKLIST then return false end
-	if bit.band(out, TYPE_SIMPLE) == TYPE_SIMPLE or bit.band(out, TYPE_PATTERN) == TYPE_PATTERN then return true end
-	return false
-end
 
 if SERVER then
 	AddCSLuaFile()
@@ -304,24 +105,18 @@ if SERVER then
 
 		if (not self.LastSpray or (CurTime() - self.LastSpray) > 2.5) then
 			local trace = self:GetEyeTrace()
-			if IsValidSprayTrace(trace) and CheckWhitelist(new_spray) then
+			if IsValidSprayTrace(trace) then
 				self.LastSpray = CurTime()
-				--[[http.Fetch(GETSIZE_URL .. "?url=" .. URLEncode(new_spray), function(content)
-					local info = string.Explode(",", content)
-					local size = tonumber(info[1])
-					if size and size < 1048576 * 20 then]]
-						net.Start("Sprayv2")
-							net.WriteEntity(self)
-							net.WriteString(new_spray)
-							net.WriteVector(trace.HitPos)
-							net.WriteVector(trace.HitNormal)
-							net.WriteInt(trace.Entity:EntIndex(), 32)
-							net.WriteBool(trace.HitWorld)
-							net.WriteString("image/png" --[[info[2]])
-							net.WriteTable(sprayData or {})
-						net.Broadcast()
-					--[[end
-				end)]]
+				http.Post(SPRAYINFO_URL:format(URLEncode(new_spray)))
+				net.Start("Sprayv2")
+					net.WriteEntity(self)
+					net.WriteString(new_spray)
+					net.WriteVector(trace.HitPos)
+					net.WriteVector(trace.HitNormal)
+					net.WriteInt(trace.Entity:EntIndex(), 32)
+					net.WriteBool(trace.HitWorld)
+					net.WriteTable(sprayData or {})
+				net.Broadcast()
 			end
 		end
 		return true
@@ -357,28 +152,84 @@ else
 	end)
 end
 
-
-
 local sprays = M.sprays or {}
 M.sprays = sprays
-local sprays2 = M.sprays2 or {}
-M.sprays2 = sprays2
 local spraycache = M.spraycache or {}
 M.spraycache = spraycache
-local gifinfocache = M.gifinfocache or {}
-M.gifinfocache = gifinfocache
-local entitycache = M.enttiycache or {}
+local entitycache = M.entitycache or {}
 M.entitycache = entitycache
+local nsfwcache = M.nsfwcache or {}
+M.nsfwcache = nsfwcache
 local favorites = file.Exists("sprayfavorites.txt", "DATA") and util.JSONToTable(file.Read("sprayfavorites.txt", "DATA")) or {}
 M.favorites = favorites
+local sprayinfoqueue = M.sprayinfoqueue or {}
+M.sprayinfoqueue = sprayinfoqueue
+local sprayinfo = M.sprayinfo or {}
+M.sprayinfo = sprayinfo
+
+function GetSprayCache(url, key, success, fail)
+	if sprayinfo[url] then
+		local sprayData = sprayinfo[url]
+		if sprayData["status"] > 0 and success then success(sprayData)
+		elseif sprayData["status"] < 0 and fail then fail(sprayData) end
+		return
+	end
+
+	if not sprayinfoqueue[url] then sprayinfoqueue[url] = {} end
+	sprayinfoqueue[url][key] = {success, fail}
+
+	local timerName = "spraydata_" .. util.CRC(url)
+	if timer.Exists(timerName) then return end
+
+	local function processQueue(sprayData)
+		if sprayinfoqueue[url] then
+			for k,v in pairs(sprayinfoqueue[url]) do
+				if sprayData["status"] > 0 and v[1] then
+					v[1](sprayData)
+				elseif sprayData["status"] < 0 and v[2] then
+					v[2](sprayData)
+				end
+			end
+			sprayinfoqueue[url] = nil
+		end
+	end
+
+	local getData
+	getData = function()
+		local testURL = SPRAYINFO_URL:format(URLEncode(url))
+		http.Fetch(testURL, function(data, _, _, code)
+			local sprayData = util.JSONToTable(data)
+			if code ~= 200 or not sprayData then
+				timer.Remove(timerName)
+				sprayinfo[url] = {["status"] = -3, ["status_text"] = ("Backend error %s"):format(code)}
+				if fail then fail(sprayinfo[url]) end
+				return
+			end
+
+			sprayData["status"] = tonumber(sprayData["status"])
+			if sprayData["status"] == 0 then
+				if not timer.Exists(timerName) then
+					timer.Create(timerName, 1, 30, getData)
+				end
+			else
+				timer.Remove(timerName)
+				sprayinfo[url] = sprayData
+				processQueue(sprayData)
+			end
+		end, function(err)
+			timer.Remove(timerName)
+			sprayinfo[url] = {["status"] = -3, ["status_text"] = ("Backend error %s"):format(err)}
+			if fail then fail(sprayinfo[url]) end
+		end)
+	end
+	getData()
+end
 
 local currentFolder = favorites
 local previousFolderStack = {}
 local baseMaterial = nil
-local lastSpray = 0
 
 local is_down = false
-local info_cache = setmetatable({}, {__mode = "k"})
 hook.Add("PlayerBindPress", "sprayv2", function(ply, bind, pressed)
 	if pressed and bind and bind:find("impulse 201") then
 		local url = CurrentSpray:GetString()
@@ -388,15 +239,6 @@ hook.Add("PlayerBindPress", "sprayv2", function(ply, bind, pressed)
 				url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/nsfw.png"
 			end
 			is_down = true
-
-			if not info_cache[url] then
-				--[[http.Fetch(GETSIZE_URL .. "?url=" .. URLEncode(url), function(content)
-					local info = string.Explode(",", content)
-					info_cache[url] = info
-
-				end)]]
-				info_cache[url] = {0, "image/png"}
-			end
 
 			return true
 		end
@@ -469,8 +311,6 @@ hook.Add("PostDrawTranslucentRenderables", "sprayv2_preview", function()
 	if not surface.URLImage then return end
 	if is_down then
 		local material = CurrentSpray:GetString()
-		if not CheckWhitelist(material) then return end
-
 		if favorites.selected and favorites.selected.nsfw and not showNSFW:GetBool() then
 			material = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/nsfw.png"
 		end
@@ -479,8 +319,14 @@ hook.Add("PostDrawTranslucentRenderables", "sprayv2_preview", function()
 		local vec = trace.HitPos
 		local norm = trace.HitNormal
 
+		local outputURL, errorText
+		GetSprayCache(material, "Preview", function(data)
+			outputURL = data["url"]
+		end, function(data)
+			errorText = data["status_text"]
+		end)
 
-		if not info_cache[material] then
+		if not outputURL then
 			local lw, lh = loadingMat()
 			local up = Vector(0, 0, 1)
 			if norm.Z == 1 then up = Vector(0, 1, 0) end
@@ -499,7 +345,7 @@ hook.Add("PostDrawTranslucentRenderables", "sprayv2_preview", function()
 				draw.Text({
 					["pos"] = {0, y},
 					["color"] = Color(100, 100, 255, 255),
-					["text"] = "Loading...",
+					["text"] = errorText or "Loading...",
 					["font"] = "SprayFont",
 					["xalign"] = TEXT_ALIGN_CENTER,
 					["yalign"] = TEXT_ALIGN_CENTER,
@@ -508,14 +354,9 @@ hook.Add("PostDrawTranslucentRenderables", "sprayv2_preview", function()
 			cam.End3D2D()
 			return
 		end
-		local info = info_cache[material]
-		local imgType = info[2]
-		imgType = (imgType == "image/gif" or imgType == "vtf") and "vtf" or "png"
 
-		--local converterUrl = ("%s?url=%s&type=%s"):format(CONVERTER_URL, URLEncode(material), imgType)
-
-		local mat = imgurls[material] or surface.URLImage(material)
-		imgurls[material] = mat
+		local mat = imgurls[outputURL] or surface.URLImage(outputURL)
+		imgurls[outputURL] = mat
 
 		local w, h, httpMat
 		if spraycache[material] then
@@ -525,14 +366,7 @@ hook.Add("PostDrawTranslucentRenderables", "sprayv2_preview", function()
 		end
 
 		if w and h then
-			local scale_x, scale_y = 1, 1
-			if w > h then
-				scale_y = (h / w)
-			else
-				scale_x = (w / h)
-			end
-
-			spraycache[material] = {w, h, httpMat, LocalPlayer(), LocalPlayer():SteamID(), LocalPlayer():Nick(), material}
+			spraycache[material] = {w, h, httpMat}
 
 			local up = Vector(0, 0, 1)
 			if norm.Z == 1 then up = Vector(0, 1, 0) end
@@ -544,7 +378,7 @@ hook.Add("PostDrawTranslucentRenderables", "sprayv2_preview", function()
 				surface.SetAlphaMultiplier(0.5)
 				surface.SetMaterial(httpMat)
 				surface.SetDrawColor(Color(255, 255, 255))
-				surface.DrawTexturedRect(-32 * scale_x, -32 * scale_y, 64 * scale_x, 64 * scale_y)
+				surface.DrawTexturedRect(-32, -32, 64, 64)
 				surface.SetAlphaMultiplier(1)
 			cam.End3D2D()
 		else
@@ -644,16 +478,15 @@ net.Receive("Sprayv2", function()
 	local norm = net.ReadVector()
 	local targetEntIndex = net.ReadInt(32)
 	local isWorld = net.ReadBool()
-	local imgType = net.ReadString()
 
 	local sprayData = net.ReadTable() or {}
 
 	local targetEnt = Entity(targetEntIndex)
 
 	if IsValid(targetEnt) or isWorld then
-		spray2.Spray(ply, material, vec, norm, imgType, targetEnt, not playSounds:GetBool(), sprayData)
+		spray2.Spray(ply, material, vec, norm, targetEnt, not playSounds:GetBool(), sprayData)
 	elseif not isWorld then
-		entitycache[ply:SteamID64()] = {targetEntIndex, ply, material, vec, norm, imgType, sprayData}
+		entitycache[ply:SteamID64()] = {targetEntIndex, ply, material, vec, norm, sprayData}
 	end
 end)
 
@@ -661,7 +494,7 @@ hook.Add("OnEntityCreated", "Sprayv2Check", function(ent)
 	if not IsValid(ent) then return end
 	for k,v in pairs(entitycache) do
 		if ent:EntIndex() == v[1] and IsValid(v[2]) then
-			spray2.Spray(v[2], v[3], v[4], v[5], v[6], ent, not playSounds:GetBool(), v[7])
+			spray2.Spray(v[2], v[3], v[4], v[5], ent, not playSounds:GetBool(), v[6])
 			entitycache[k] = nil
 		end
 	end
@@ -670,57 +503,53 @@ end)
 local pmeta = FindMetaTable("Player")
 function pmeta:StripSpray2()
 	if sprays[self] then
-		if type(sprays[self]) == "string" then
-			hook.Remove("Think", sprays[self])
-			hook.Remove("PostDrawTranslucentRenderables", sprays[self])
-		else
+		local sprayMat = sprays[self]["spraymat"]
+
+		local thinkKey = "URLDownload" .. self:EntIndex()
+		hook.Remove("Think", thinkKey)
+		hook.Remove("PostDrawTranslucentRenderables", thinkKey)
+		if sprayMat then
 			_, _, baseMaterial = baseSpray()
-			sprays[self]:SetString("$alpha", "0")
-			sprays[self]:SetString("$alphatest", "1")
-			sprays[self]:SetString("$ignorez", "1")
-			sprays[self]:SetString("$basetexturetransform", "center 0.5 0.5 scale 0 0 rotate 0 translate 0 0")
+			sprayMat:SetString("$alpha", "0")
+			sprayMat:SetString("$alphatest", "1")
+			sprayMat:SetString("$ignorez", "1")
+			sprayMat:SetString("$basetexturetransform", "center 0.5 0.5 scale 0 0 rotate 0 translate 0 0")
 			--sprays[player]:GetTexture("$basetexture"):Download()
 			if baseMaterial then
-				sprays[self]:SetTexture("$basetexture", baseMaterial:GetTexture("$basetexture"))
+				sprayMat:SetTexture("$basetexture", baseMaterial:GetTexture("$basetexture"))
 			else
-				sprays[self]:SetTexture("$basetexture", "vgui/notices/error")
+				sprayMat:SetTexture("$basetexture", "vgui/notices/error")
 			end
 		end
 		sprays[self] = nil
-		sprays2[self:SteamID()] = nil
 	end
 end
-nsfwCache = nsfwCache or {}
+
 cvars.AddChangeCallback("sprayv2_nsfw", function(name, old, new)
-	if tobool(new) and table.Count(nsfwCache) > 0 then
-		for k,v in pairs(nsfwCache) do
+	if tobool(new) and table.Count(nsfwcache) > 0 then
+		for k,v in pairs(nsfwcache) do
 			if IsValid(v[1]) then
 				spray2.Spray(unpack(v))
 			end
 		end
-		nsfwCache = {}
+		nsfwcache = {}
 	end
 end, "Spray2NSFW")
 
 SpraySize = 64
-function Spray(ply, material, vec, norm, imgType, targetEnt, noSound, sprayData)
+function Spray(ply, material, vec, norm, targetEnt, noSound, sprayData)
 	if not surface.URLImage then return end
 	if not IsValid(ply) then return end
-	if not CheckWhitelist(material) then return end
 
 	if sprayData and sprayData.nsfw and not showNSFW:GetBool() then
-		nsfwCache[ply:SteamID64()] = {ply, material, vec, norm, imgType, targetEnt, noSound, sprayData}
+		nsfwcache[ply:SteamID64()] = {ply, material, vec, norm, targetEnt, noSound, sprayData}
 		material = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/nsfw.png"
 	end
 
 	ply:StripSpray2()
-	--local converterUrl = CONVERTER_URL .. "?url=" .. URLEncode(material) .. "&type=" .. ((imgType == "image/gif" or imgType == "vtf") and "vtf" or "png")
-	local mat = surface.URLImage(material, "")
 	local thinkKey = "URLDownload" .. ply:EntIndex()
-	sprays[ply] = thinkKey
-	local loading2 = false
 
-	sprays2[ply:SteamID()] =
+	sprays[ply] =
 	{
 		["material"] = material,
 		["steamID"] = ply:SteamID(),
@@ -768,135 +597,110 @@ function Spray(ply, material, vec, norm, imgType, targetEnt, noSound, sprayData)
 		end
 	end
 
-	hook.Add("Think", thinkKey, function()
-		hook.Add("PostDrawTranslucentRenderables", thinkKey, function()
-			local w, h = loadingMat()
-			local up = Vector(0, 0, 1)
-			if norm.Z == 1 then up = Vector(0, 1, 0) end
-			if norm.Z == -1 then up = Vector(0, -1, 0) end
-			local ang = norm:AngleEx(up)
-			ang:RotateAroundAxis(ang:Up(), 90)
-			ang:RotateAroundAxis(ang:Forward(), 90)
-			cam.Start3D2D(vec + ang:Up() * 0.1, ang, 0.35)
-				local y = 0
-				if w and h then
-					surface.SetDrawColor(Color(255, 255, 255))
-					surface.DrawTexturedRect(-32, -32 - 16, 64, 64)
-					y = 32
-				end
-				draw.Text({
-					["pos"] = {0, y},
-					["color"] = Color(100, 100, 255, 255),
-					["text"] = "Loading...",
-					["font"] = "SprayFont",
-					["xalign"] = TEXT_ALIGN_CENTER,
-					["yalign"] = TEXT_ALIGN_CENTER,
-				})
-			cam.End3D2D()
-		end)
+	hook.Add("PostDrawTranslucentRenderables", thinkKey, function()
+		local w, h = loadingMat()
+		local up = Vector(0, 0, 1)
+		if norm.Z == 1 then up = Vector(0, 1, 0) end
+		if norm.Z == -1 then up = Vector(0, -1, 0) end
+		local ang = norm:AngleEx(up)
+		ang:RotateAroundAxis(ang:Up(), 90)
+		ang:RotateAroundAxis(ang:Forward(), 90)
+		cam.Start3D2D(vec + ang:Up() * 0.1, ang, 0.35)
+			local y = 0
+			if w and h then
+				surface.SetDrawColor(Color(255, 255, 255))
+				surface.DrawTexturedRect(-32, -32 - 16, 64, 64)
+				y = 32
+			end
+			draw.Text({
+				["pos"] = {0, y},
+				["color"] = Color(100, 100, 255, 255),
+				["text"] = "Loading...",
+				["font"] = "SprayFont",
+				["xalign"] = TEXT_ALIGN_CENTER,
+				["yalign"] = TEXT_ALIGN_CENTER,
+			})
+		cam.End3D2D()
+	end)
 
-		local w, h, httpMat
-		if spraycache[material] then
-			w, h, httpMat = unpack(spraycache[material])
-		else
-			w, h, httpMat = mat()
-		end
+	local function clean()
+		hook.Remove("PostDrawTranslucentRenderables", thinkKey)
+		hook.Remove("Think", thinkKey)
+	end
+	local function downloadImage(data)
+		hook.Add("Think", thinkKey, function()
+			local w, h, httpMat
 
-		if w == false or not IsValid(ply) then hook.Remove("Think", thinkKey) hook.Remove("PostDrawTranslucentRenderables", thinkKey) return end
-		if type(sprays[ply]) ~= "string" then
-			hook.Remove("Think", thinkKey)
-			hook.Remove("PostDrawTranslucentRenderables", thinkKey)
-			return
-		end
-
-		if w and h and (CurTime() - lastSpray) > 1 then
-			local _, _, baseSprayMat = baseSpray()
-			if loading2 then return end
-			if not baseSprayMat then return end
-			local function PlaceSpray(rate)
-				if not IsValid(ply) then hook.Remove("Think", thinkKey) hook.Remove("PostDrawTranslucentRenderables", thinkKey) return end
-				loading2 = false
-				lastSpray = CurTime()
-				spraycache[material] = {w, h, httpMat, ply, ply:SteamID(), ply:Nick(), material}
-				local matname = os.time() .. "SPRAYV2WHYDOIDO" .. math.random(1024)
-
-				local tempMat
-				local scale_x, scale_y = 1, 1
-				if w > h then
-					scale_y = 1 / (h / w)
-				else
-					scale_x = 1 / (w / h)
-				end
-
-		 		if IsValid(targetEnt) then
-					tempMat = CreateMaterial(matname, "VertexLitGeneric", {
-						["$basetexture"] = baseSprayMat:GetString("$basetexture"),
-						["$basetexturetransform"] = ("center 0.5 0.5 scale %s %s rotate 0 translate 0 0"):format(scale_x, scale_y),
-						["$vertexalpha"] = 1,
-						["$decal"] = 1
-					})
-				else
-					tempMat = CreateMaterial(matname, "LightmappedGeneric", {
-						["$basetexture"] = baseSprayMat:GetString("$basetexture"),
-						["$basetexturetransform"] = ("center 0.5 0.5 scale %s %s rotate 0 translate 0 0"):format(scale_x, scale_y),
-						["$vertexcolor"] = 1,
-						["$vertexalpha"] = 1,
-						["$transparent"] = 1,
-						["$nolod"] = 1,
-						["Proxies"] = {AnimatedTexture = {animatedTextureVar = "$basetexture", animatedTextureFrameNumVar = "$frame", animatedTextureFrameRate = rate or 8}},
-						["$decal"] = 1
-					})
-				end
-
-				local tex = httpMat:GetTexture("$basetexture")
-				if tempMat and tex then
-					tempMat:SetTexture("$basetexture", tex)
-					tempMat:GetTexture("$basetexture"):Download()
-
-					if not tempMat:IsError() and not tempMat:GetTexture("$basetexture"):IsError() then
-						hook.Remove("Think", thinkKey)
-						hook.Remove("PostDrawTranslucentRenderables", thinkKey)
-
-						materialOut = tempMat
-						if not noSound then
-							sound.Play("player/sprayer.wav", vec, 75, 100, 0.5)
-						end
-
-						DetectCrash()
-						util.DecalEx(tempMat, IsValid(targetEnt) and targetEnt or game.GetWorld(), vec, norm, Color(255, 255, 255), 0, 0, 1)
-						sprays[ply] = tempMat
-						hook.Remove("PostDrawTranslucentRenderables", ply:UniqueID() .. "SprayInfo")
-					end
-				else
-					hook.Remove("Think", thinkKey)
-					hook.Remove("PostDrawTranslucentRenderables", thinkKey)
-				end
+			if spraycache[material] then
+				w, h, httpMat = unpack(spraycache[material])
+			else
+				local mat = imgurls[data["url"]] or surface.URLImage(data["url"])
+				imgurls[data["url"]] = mat
+				w, h, httpMat = mat()
 			end
 
-			--[[if imgType == "image/gif" then
-				loading2 = true
-				if gifinfocache[material] then
-					PlaceSpray(gifinfocache[material])
-					return
-				end
-				http.Fetch(GIFINFO_URL .. "?url=" .. URLEncode(material), function(content)
-					local num = tonumber(content)
-					if num and type(sprays[ply]) == "string" then
-						PlaceSpray(num)
-						gifinfocache[material] = num
+			if w == false or not IsValid(ply) or sprays[ply].material ~= material then clean() return end
+			if not w then return end
+
+			local _, _, baseSprayMat = baseSpray()
+			if not baseSprayMat then return end
+
+			clean()
+			spraycache[material] = {w, h, httpMat}
+			local matname = os.time() .. "SPRAYV2WHYDOIDO" .. math.random(1024)
+
+			local tempMat
+			if IsValid(targetEnt) then
+				tempMat = CreateMaterial(matname, "VertexLitGeneric", {
+					["$basetexture"] = baseSprayMat:GetString("$basetexture"),
+					["$basetexturetransform"] = "center 0.5 0.5 scale 1 1 rotate 0 translate 0 0",
+					["$vertexalpha"] = 1,
+					["$decal"] = 1
+				})
+			else
+				tempMat = CreateMaterial(matname, "LightmappedGeneric", {
+					["$basetexture"] = baseSprayMat:GetString("$basetexture"),
+					["$basetexturetransform"] = "center 0.5 0.5 scale 1 1 rotate 0 translate 0 0",
+					["$vertexcolor"] = 1,
+					["$vertexalpha"] = 1,
+					["$transparent"] = 1,
+					["$nolod"] = 1,
+					["Proxies"] = {AnimatedTexture = {animatedTextureVar = "$basetexture", animatedTextureFrameNumVar = "$frame", animatedTextureFrameRate = tonumber(data["frame_rate"]) or 8}},
+					["$decal"] = 1
+				})
+			end
+
+			local tex = httpMat:GetTexture("$basetexture")
+			if tempMat and tex then
+				tempMat:SetTexture("$basetexture", tex)
+				tempMat:GetTexture("$basetexture"):Download()
+
+				if not tempMat:IsError() and not tempMat:GetTexture("$basetexture"):IsError() then
+					if not noSound then
+						sound.Play("player/sprayer.wav", vec, 75, 100, 0.5)
 					end
-				end)
-			else]]
-				PlaceSpray(8)
-			--end
-		end
+
+					DetectCrash()
+					util.DecalEx(tempMat, IsValid(targetEnt) and targetEnt or game.GetWorld(), vec, norm, Color(255, 255, 255), 0, 0, 1)
+					sprays[ply]["spraymat"] = tempMat
+					hook.Remove("PostDrawTranslucentRenderables", ply:UniqueID() .. "SprayInfo")
+				end
+			end
+		end)
+	end
+
+	GetSprayCache(material, "Spray", function(data)
+		downloadImage(data)
+	end,
+	function(data)
+		hook.Remove("PostDrawTranslucentRenderables", thinkKey)
 	end)
 end
 
 local lastKeyDown = false
 hook.Add("PostDrawTranslucentRenderables", "SprayInfo", function()
 	local inSpeed = LocalPlayer():KeyDown(IN_SPEED)
-	for k,tbl in pairs(sprays2) do
+	for k,tbl in pairs(sprays) do
 		if tbl and inSpeed then
 
 			if IsValid(tbl.ent) then
@@ -1037,7 +841,11 @@ function SprayPanel:Init()
 						for k2,v2 in pairs(currentFolder) do
 							if v2 == v.tab then v.Index = k2 end
 						end
-						table.remove(currentFolder, v.Index)
+
+						if isnumber(v.Index) then
+							table.remove(currentFolder, v.Index)
+						end
+
 						file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
 						v:Remove()
 					end
@@ -1053,7 +861,11 @@ function SprayPanel:Init()
 						for k2,v2 in pairs(currentFolder) do
 							if v2 == v.tab then v.Index = k2 end
 						end
-						table.remove(currentFolder, v.Index)
+
+						if isnumber(v.Index) then
+							table.remove(currentFolder, v.Index)
+						end
+
 						file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
 						v:Remove()
 
@@ -1109,14 +921,11 @@ end
 
 function SprayPanel:SetSpray(str)
 	self.SprayURL = str
-	--[[local fileType = "png"
-	if str:sub(-3) == "gif" or str:sub(-3) == "vtf" then
-		fileType = "vtf"
-	end
-	local converterUrl = CONVERTER_URL .. "?url=" .. URLEncode(str) .. "&type=" .. fileType]]
-	if CheckWhitelist(str) then
-		self.Mat = surface.URLImage(str)
-	end
+	GetSprayCache(str, "UI", function(data)
+		if IsValid(self) then
+			self.Mat = surface.URLImage(data["url"])
+		end
+	end)
 end
 
 function SprayPanel:PerformLayout()
@@ -1193,7 +1002,7 @@ function SprayPanel:DoClick()
 
 	favorites.selected = self.tab
 	file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
-	RunConsoleCommand("sprayv2_spray", self.SprayURL)
+	RunConsoleCommand("sprayv2_spray", self.SprayURL:sub(1, 240))
 end
 
 function SprayPanel:DoRightClick()
@@ -1289,10 +1098,7 @@ concommand.Add("sprayv2_openfavorites", function()
 	function FavoritePanel.AddFavorite:DoClick()
 		Derma_StringRequest("Add a favorite", "URL","",function(text)
 			if text == "" then return end
-			if not CheckWhitelist(text) then
-				chat.AddText(Color(255, 255, 255), "Not a whitelisted Sprayv2 URL")
-				return
-			end
+			if #text > 240 then return end
 
 			for k,v in pairs(currentFolder) do
 				if v.url == text then return end
