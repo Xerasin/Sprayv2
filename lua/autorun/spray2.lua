@@ -828,7 +828,7 @@ function SprayPanel:Init()
 	function self.NSFWButton.DoClick(button)
 		self.tab.nsfw = not self.tab.nsfw
 		file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
-		FavoritePanel:Populate()
+		if IsValid(FavoritePanel) then FavoritePanel:Populate() end
 	end
 
 	self.Checkmark = Material("icon16/accept.png")
@@ -884,7 +884,7 @@ function SprayPanel:Init()
 					end
 					AddPanel(receiver)
 					table.insert(currentFolder, newFolder)
-					FavoritePanel:Populate()
+					if IsValid(FavoritePanel) then FavoritePanel:Populate() end
 				end, function() end, "Create", "Cancel")
 			end
 		end
@@ -919,7 +919,7 @@ function SprayPanel:MakeFolder(previous)
 			Derma_StringRequest("Rename Folder", "Enter a new name", self.tab.name, function(str)
 				self.tab.name = str
 				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
-				FavoritePanel:Populate()
+				if IsValid(FavoritePanel) then FavoritePanel:Populate() end
 			end, function() end, "Rename", "Cancel")
 		end
 
@@ -930,11 +930,11 @@ function SprayPanel:MakeFolder(previous)
 			Derma_StringRequest("Rename Folder", "Enter a new image", self.tab.name, function(str)
 				self.tab.url = str
 				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
-				FavoritePanel:Populate()
+				if IsValid(FavoritePanel) then FavoritePanel:Populate() end
 			end, function() 
                 self.tab.url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png"
 				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
-				FavoritePanel:Populate()
+				if IsValid(FavoritePanel) then FavoritePanel:Populate() end
             end, "Change", "Default")
 		end
 	end
@@ -1022,7 +1022,7 @@ function SprayPanel:DoClick()
 			table.insert(previousFolderStack, currentFolder)
 			currentFolder = self.tab.contents
 		end
-		FavoritePanel:Populate()
+		if IsValid(FavoritePanel) then FavoritePanel:Populate() end
 		return
 	end
 
