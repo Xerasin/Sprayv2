@@ -1,30 +1,10 @@
 pcall(require, "urlimage")
-local SPRAYINFO_URL = "http://sprays.xerasin.com/?url=%s"
-
+local SPRAYINFO_URL = "https://sprays.xerasin.com/"
+local RANDOMSPRAY_URL = "https://sprays.xerasin.com/random.php"
 module("spray2", package.seeall)
 local _M = _M
 local M = setmetatable({},{__index = function(s,k) return rawget(_M,k) end,__newindex = _M})
 _M.M = M
-
-local function URLEncode(s)
-	s = tostring(s)
-	local new = ""
-
-	for i = 1, #s do
-		local c = s:sub(i, i)
-		local b = c:byte()
-		if (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or
-			(b >= 48 and b <= 57) or
-			c == "_" or c == "." or c == "~" then
-			new = new .. c
-		else
-			new = new .. string.format("%%%X", b)
-		end
-	end
-
-	return new
-end
-
 
 if SERVER then
 	AddCSLuaFile()
@@ -32,8 +12,7 @@ if SERVER then
 	util.AddNetworkString("ClearSpray2")
 
 	net.Receive("Sprayv2", function(len, ply)
-		local sprayData = net.ReadTable()
-		ply:PostSpray(sprayData or {})
+		ply:PostSpray(net.ReadTable())
 	end)
 
 
@@ -41,6 +20,12 @@ if SERVER then
 		if ply:PostSpray() then return true end
 	end)
 
+
+	hook.Add("NetData", "sprayv2", function(pl, key, value)
+		if key == "sprayv2" then
+			return not value or (type(value) == "table" and value.url and value.url ~= "")
+		end
+	end)
 
 	local function addcmd()
 		aowl.AddCommand({"spraymenu", "spray", "sprayv2"}, function(ply, line)
@@ -99,23 +84,22 @@ if SERVER then
 
 	function pmeta:PostSpray(sprayData)
 		if not IsValid(self) then return end
-		local new_spray = self:GetInfo("sprayv2_spray")
-		if new_spray == "" then return end
-
+		local spray = sprayData or (self.GetNetData and self:GetNetData("sprayv2"))
+		if not spray or not spray.url or spray.url == "" then return end
 
 		if (not self.LastSpray or (CurTime() - self.LastSpray) > 2.5) then
 			local trace = self:GetEyeTrace()
 			if IsValidSprayTrace(trace) then
 				self.LastSpray = CurTime()
-				http.Post(SPRAYINFO_URL:format(URLEncode(new_spray)))
+				http.Post(SPRAYINFO_URL, {["url"] = spray.url})
 				net.Start("Sprayv2")
 					net.WriteEntity(self)
-					net.WriteString(new_spray)
+					net.WriteString(spray.url)
 					net.WriteVector(trace.HitPos)
 					net.WriteVector(trace.HitNormal)
 					net.WriteInt(trace.Entity:EntIndex(), 32)
 					net.WriteBool(trace.HitWorld)
-					net.WriteTable(sprayData or {})
+					net.WriteTable({nsfw = spray.nsfw})
 				net.Broadcast()
 			end
 		end
@@ -127,7 +111,7 @@ end
 local surface = surface
 local cam = cam
 
-local CurrentSpray = CreateClientConVar("sprayv2_spray", "", true, true)
+--local CurrentSpray = CreateClientConVar("sprayv2_spray", "", true, true)
 local sprayProps = CreateClientConVar("sprayv2_entities", "1", true, false, nil, 0, 1)
 local maxVertex = CreateClientConVar("sprayv2_entities_maxvertexes", "512", true, false, "Max Vertexes that can be sprayed on", 10)
 local playSounds = CreateClientConVar("sprayv2_sounds", "1", true, false, nil, 0, 1)
@@ -196,8 +180,7 @@ function GetSprayCache(url, key, success, fail)
 
 	local getData
 	getData = function()
-		local testURL = SPRAYINFO_URL:format(URLEncode(url))
-		http.Fetch(testURL, function(data, _, _, code)
+		http.Post(SPRAYINFO_URL, {["url"] = url}, function(data, _, _, code)
 			local sprayData = util.JSONToTable(data)
 			if code ~= 200 or not sprayData then
 				timer.Remove(timerName)
@@ -209,7 +192,7 @@ function GetSprayCache(url, key, success, fail)
 			sprayData["status"] = tonumber(sprayData["status"])
 			if sprayData["status"] == 0 then
 				if not timer.Exists(timerName) then
-					timer.Create(timerName, 1, 30, getData)
+					timer.Create(timerName, 0.1, 30, getData)
 				end
 			else
 				timer.Remove(timerName)
@@ -232,12 +215,8 @@ local baseMaterial = nil
 local is_down = false
 hook.Add("PlayerBindPress", "sprayv2", function(ply, bind, pressed)
 	if pressed and bind and bind:find("impulse 201") then
-		local url = CurrentSpray:GetString()
 		local trace = LocalPlayer():GetEyeTrace()
-		if url ~= "" and trace.StartPos:Distance(trace.HitPos) <= 200 then
-			if favorites.selected and favorites.selected.nsfw and not showNSFW:GetBool() then
-				url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/nsfw.png"
-			end
+		if trace.StartPos:Distance(trace.HitPos) <= 200 then
 			is_down = true
 
 			return true
@@ -265,7 +244,7 @@ hook.Add("CreateMove", "sprayv2", function()
 	if is_down and input.WasKeyReleased(keyCode) then
 		is_down = false
 		net.Start("Sprayv2")
-			net.WriteTable(favorites.selected or {})
+            net.WriteTable(favorites.selected)
 		net.SendToServer()
 	end
 end)
@@ -310,10 +289,16 @@ local imgurls = {}
 hook.Add("PostDrawTranslucentRenderables", "sprayv2_preview", function()
 	if not surface.URLImage then return end
 	if is_down then
-		local material = CurrentSpray:GetString()
-		if favorites.selected and favorites.selected.nsfw and not showNSFW:GetBool() then
+		local spray = favorites.selected
+		if not spray then return end
+
+		local material = spray.url
+		if spray.nsfw and not showNSFW:GetBool() then
 			material = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/nsfw.png"
 		end
+
+		if not material or material == "" then return end
+
 
 		local trace = LocalPlayer():GetEyeTrace()
 		local vec = trace.HitPos
@@ -446,12 +431,9 @@ surface.CreateFont( "SprayFontInfo2", {
 
 function DetectCrash()
 	file.Write("_spray2_crash.txt", "BEGIN")
-	timer.Remove("Spray2CrashDetect")
-	timer.Create("Spray2CrashDetect", 4, 1, spray2.DetectCrashEnd)
 end
 
 function DetectCrashEnd()
-	timer.Remove("Spray2CrashDetect")
 	file.Delete("_spray2_crash.txt")
 end
 
@@ -525,6 +507,12 @@ function pmeta:StripSpray2()
 	end
 end
 
+hook.Add("InitPostEntity", "Sprayv2", function()
+	if favorites and favorites.selected and favorites.selected.url and favorites.selected.url ~= "" then
+		if LocalPlayer().SetNetData then LocalPlayer():SetNetData("sprayv2", favorites.selected) end
+	end
+end)
+
 cvars.AddChangeCallback("sprayv2_nsfw", function(name, old, new)
 	if tobool(new) and table.Count(nsfwcache) > 0 then
 		for k,v in pairs(nsfwcache) do
@@ -549,22 +537,31 @@ function Spray(ply, material, vec, norm, targetEnt, noSound, sprayData)
 	ply:StripSpray2()
 	local thinkKey = "URLDownload" .. ply:EntIndex()
 
+
+	local up = Vector(0, 0, 1)
+	if norm.Z == 1 then up = Vector(0, 1, 0) end
+	if norm.Z == -1 then up = Vector(0, -1, 0) end
+	local ang = norm:AngleEx(up)
+	ang:RotateAroundAxis(ang:Up(), 90)
+	ang:RotateAroundAxis(ang:Forward(), 90)
+
 	sprays[ply] =
 	{
 		["material"] = material,
 		["steamID"] = ply:SteamID(),
 		["nick"] = ply:Nick(),
 		["realnick"] = ply.RealNick and ply:RealNick() or "",
-		["player"] = ply,
 		["vec"] = vec,
-		["lvec"] = IsValid(targetEnt) and targetEnt:WorldToLocal(vec) or Vector(),
-		["norm"] = norm,
+		["ang"] = ang,
 		["ent"] = targetEnt,
 		["nsfw"] = sprayData.nsfw
 	}
 
 
 	if IsValid(targetEnt) then
+		sprays[ply]["lvec"] = targetEnt:WorldToLocal(vec)
+		sprays[ply]["lang"] = targetEnt:WorldToLocalAngles(ang)
+
 		if not sprayProps:GetBool() then
 			sound.Play("ui/beep_error01.wav", vec, 75, 100, 0.5)
 			return false
@@ -599,12 +596,7 @@ function Spray(ply, material, vec, norm, targetEnt, noSound, sprayData)
 
 	hook.Add("PostDrawTranslucentRenderables", thinkKey, function()
 		local w, h = loadingMat()
-		local up = Vector(0, 0, 1)
-		if norm.Z == 1 then up = Vector(0, 1, 0) end
-		if norm.Z == -1 then up = Vector(0, -1, 0) end
-		local ang = norm:AngleEx(up)
-		ang:RotateAroundAxis(ang:Up(), 90)
-		ang:RotateAroundAxis(ang:Forward(), 90)
+
 		cam.Start3D2D(vec + ang:Up() * 0.1, ang, 0.35)
 			local y = 0
 			if w and h then
@@ -639,7 +631,7 @@ function Spray(ply, material, vec, norm, targetEnt, noSound, sprayData)
 				w, h, httpMat = mat()
 			end
 
-			if w == false or not IsValid(ply) or sprays[ply].material ~= material then clean() return end
+			if w == nil or not IsValid(ply) or sprays[ply].material ~= material then clean() return end
 			if not w then return end
 
 			local _, _, baseSprayMat = baseSpray()
@@ -647,7 +639,7 @@ function Spray(ply, material, vec, norm, targetEnt, noSound, sprayData)
 
 			clean()
 			spraycache[material] = {w, h, httpMat}
-			local matname = os.time() .. "SPRAYV2WHYDOIDO" .. math.random(1024)
+			local matname = "Sprayv2_" .. os.time() .. "_" .. (util.CRC(material) or "")
 
 			local tempMat
 			if IsValid(targetEnt) then
@@ -676,12 +668,15 @@ function Spray(ply, material, vec, norm, targetEnt, noSound, sprayData)
 				tempMat:GetTexture("$basetexture"):Download()
 
 				if not tempMat:IsError() and not tempMat:GetTexture("$basetexture"):IsError() then
-					if not noSound then
-						sound.Play("player/sprayer.wav", vec, 75, 100, 0.5)
+					if not noSound and (sound and type(sound) == "table" and sound.Play) then
+						sound.Play("SprayCan.Paint", vec)
 					end
 
-					DetectCrash()
-					util.DecalEx(tempMat, IsValid(targetEnt) and targetEnt or game.GetWorld(), vec, norm, Color(255, 255, 255), 0, 0, 1)
+					local validEnt = IsValid(targetEnt)
+					if validEnt then DetectCrash() end
+					util.DecalEx(tempMat, validEnt and targetEnt or game.GetWorld(), vec, norm, Color(255, 255, 255), 0, 0, 1)
+					if validEnt then timer.Simple(0.05, DetectCrashEnd) end
+
 					sprays[ply]["spraymat"] = tempMat
 					hook.Remove("PostDrawTranslucentRenderables", ply:UniqueID() .. "SprayInfo")
 				end
@@ -693,7 +688,7 @@ function Spray(ply, material, vec, norm, targetEnt, noSound, sprayData)
 		downloadImage(data)
 	end,
 	function(data)
-		hook.Remove("PostDrawTranslucentRenderables", thinkKey)
+		clean()
 	end)
 end
 
@@ -702,22 +697,16 @@ hook.Add("PostDrawTranslucentRenderables", "SprayInfo", function()
 	local inSpeed = LocalPlayer():KeyDown(IN_SPEED)
 	for k,tbl in pairs(sprays) do
 		if tbl and inSpeed then
+			local vec = tbl.vec
+			local ply = tbl.ply
+			local ang = tbl.ang
+			local material = tbl.material
+
 
 			if IsValid(tbl.ent) then
-				tbl.vec = tbl.ent:LocalToWorld(tbl.lvec)
+				vec = tbl.ent:LocalToWorld(tbl.lvec)
+				ang = tbl.ent:LocalToWorldAngles(tbl.lang)
 			end
-
-			local vec = tbl.vec
-			local norm = tbl.norm
-			local ply = tbl.ply
-			local material = tbl.material
-			local up = Vector(0, 0, 1)
-			if norm.Z == 1 then up = Vector(0, 1, 0) end
-			if norm.Z == -1 then up = Vector(0, -1, 0) end
-			local ang = norm:AngleEx(up)
-			ang:RotateAroundAxis(ang:Up(), 90)
-			ang:RotateAroundAxis(ang:Forward(), 90)
-
 
 			local ply_id = IsValid(ply) and ply:SteamID() or tbl.steamID
 			local ply_name = IsValid(ply) and ply:Nick() or tbl.nick
@@ -783,6 +772,23 @@ hook.Add("PostDrawTranslucentRenderables", "SprayInfo", function()
 	lastKeyDown = LocalPlayer():KeyDown(IN_ATTACK)
 end)
 
+concommand.Add("sprayv2_random", function(ply, cmd, args)
+	http.Fetch(RANDOMSPRAY_URL, function(data, _, _, code)
+		if code ~= 200 then return end
+
+		favorites.selected = {url = data, nsfw = true}
+		if (not args or #args == 0) or tobool(args[1]) then
+			net.Start("Sprayv2")
+				net.WriteTable(favorites.selected)
+			net.SendToServer()
+		end
+
+		
+		file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+		if LocalPlayer().SetNetData then LocalPlayer():SetNetData("sprayv2", favorites.selected) end
+	end)
+end)
+
 local SprayPanel = {}
 function SprayPanel:Init()
 	self:SetText("")
@@ -822,7 +828,7 @@ function SprayPanel:Init()
 	function self.NSFWButton.DoClick(button)
 		self.tab.nsfw = not self.tab.nsfw
 		file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
-		Repopulate()
+		FavoritePanel:Populate()
 	end
 
 	self.Checkmark = Material("icon16/accept.png")
@@ -855,6 +861,7 @@ function SprayPanel:Init()
 					local newFolder = {}
 					newFolder.isFolder = true
 					newFolder.name = str
+                    newFolder.url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png"
 					newFolder.contents = {}
 					local function AddPanel(v)
 						table.insert(newFolder.contents, v.tab)
@@ -877,8 +884,7 @@ function SprayPanel:Init()
 					end
 					AddPanel(receiver)
 					table.insert(currentFolder, newFolder)
-					Repopulate()
-
+					FavoritePanel:Populate()
 				end, function() end, "Create", "Cancel")
 			end
 		end
@@ -913,8 +919,23 @@ function SprayPanel:MakeFolder(previous)
 			Derma_StringRequest("Rename Folder", "Enter a new name", self.tab.name, function(str)
 				self.tab.name = str
 				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
-				Repopulate()
+				FavoritePanel:Populate()
 			end, function() end, "Rename", "Cancel")
+		end
+
+        self.ChangeImageButton = vgui.Create("DImageButton", self)
+		self.ChangeImageButton:SetSize(16, 16)
+		self.ChangeImageButton:SetImage("icon16/image_edit.png")
+		function self.ChangeImageButton.DoClick(button)
+			Derma_StringRequest("Rename Folder", "Enter a new image", self.tab.name, function(str)
+				self.tab.url = str
+				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+				FavoritePanel:Populate()
+			end, function() 
+                self.tab.url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png"
+				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+				FavoritePanel:Populate()
+            end, "Change", "Default")
 		end
 	end
 end
@@ -939,6 +960,10 @@ function SprayPanel:PerformLayout()
 
 	if IsValid(self.RenameButton) then
 		self.RenameButton:SetPos(w - 16, h - 16)
+	end
+
+    if IsValid(self.ChangeImageButton) then
+		self.ChangeImageButton:SetPos(0, 0)
 	end
 
 	if IsValid(self.NSFWButton) then
@@ -981,7 +1006,8 @@ function SprayPanel:Paint(pw, ph)
 		})
 	end
 
-	if CurrentSpray:GetString() == self.SprayURL then
+	local spray = favorites.selected
+	if spray and spray.url == self.SprayURL then
 		surface.SetMaterial(self.Checkmark)
 		surface.SetDrawColor(Color(255, 255, 255))
 		surface.DrawTexturedRect(0, ph - 16, 16, 16)
@@ -996,13 +1022,22 @@ function SprayPanel:DoClick()
 			table.insert(previousFolderStack, currentFolder)
 			currentFolder = self.tab.contents
 		end
-		Repopulate()
+		FavoritePanel:Populate()
 		return
 	end
 
-	favorites.selected = self.tab
+	if CurTime() - (self.lastSelect or 0) <= 0.2 then return end
+	self.lastSelect = CurTime()
+
+	local spray = favorites.selected
+	if spray and spray.url == self.SprayURL then
+		favorites.selected = nil
+	else
+		favorites.selected = {url = self.SprayURL, nsfw = self.tab.nsfw}
+	end
+
 	file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
-	RunConsoleCommand("sprayv2_spray", self.SprayURL:sub(1, 240))
+	if LocalPlayer().SetNetData then LocalPlayer():SetNetData("sprayv2", favorites.selected) end
 end
 
 function SprayPanel:DoRightClick()
@@ -1019,102 +1054,165 @@ end
 
 
 vgui.Register("DSprayPanel", SprayPanel, "DButton")
-function Repopulate()
-	Sort()
-	FavoritePanel.List:Clear()
-	local function AddButton(k, v, folder, tab)
-		local SprayPan = vgui.Create("DSprayPanel", FavoritePanel.List)
-		SprayPan:SetSize(128, 128)
-		SprayPan:SetSpray(v.url)
-		SprayPan:SetFavoriteTab(v)
-		if folder then
-			SprayPan:MakeFolder(tab)
-		end
-		FavoritePanel.List:Add(SprayPan)
-	end
-	if #previousFolderStack > 0 then
-		AddButton(1, {url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png", name = "Back"}, true, previousFolderStack[#previousFolderStack])
-	end
-	for k,v in pairs(currentFolder) do
-		if v.isFolder then
-			v.url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png"
-			AddButton(k, v, true)
-		elseif tonumber(k) then
-			AddButton(k, v)
-		end
-	end
-end
 
-function Sort()
-	table.sort(currentFolder, function(a, b)
-		local ac = table.Copy(a)
-		local bc = table.Copy(b)
-		if ac.name then ac.name = "AAAAAAAA" .. ac.name:lower() end
-		if bc.name then bc.name = "AAAAAAAA" .. bc.name:lower() end
-		return (ac.name or ac.url) < (bc.name or bc.url)
-	end)
-end
+local DFavoritePanel = {}
+function DFavoritePanel:Init()
+    self:SetCookieName("Sprayv2Favorites")
+    self:SetSize(self:GetCookieNumber("w", 420), self:GetCookieNumber("h", 525))
+	self:SetPos(self:GetCookieNumber("x", 5), self:GetCookieNumber("y", 5))
+	self:SetTitle("Spray Favorites")
+    self:SetSizable(true)
+    self:SetDraggable(true)
+   
 
-concommand.Add("sprayv2_openfavorites", function()
-	if FavoritePanel then
-		FavoritePanel:Remove()
-	end
-	local width = 420
-	FavoritePanel = vgui.Create("DFrame")
-	local offset = 25
-	if FavoritePanel.GetTitleBarHeight then
-		offset = FavoritePanel:GetTitleBarHeight()
-	end
-	FavoritePanel:SetSize(width, 500 + offset)
-	local _, h = FavoritePanel:GetSize()
-	FavoritePanel:SetPos(5, 5)
-	FavoritePanel:SetTitle("Spray Favorites")
-	FavoritePanel:MakePopup()
-
-	FavoritePanel.Scroll = vgui.Create( "DScrollPanel", FavoritePanel ) --Create the Scroll panel
-	FavoritePanel.Scroll:SetSize(width - 10, h - 20 - offset)
-	FavoritePanel.Scroll:SetPos(5, offset)
-	--FavoritePanel.Scroll:Dock(FILL)
-
-	FavoritePanel.List	= vgui.Create( "DIconLayout", FavoritePanel.Scroll )
-	FavoritePanel.List:SetSpaceY( 5 ) --Sets the space in between the panels on the X Axis by 5
-	FavoritePanel.List:SetSpaceX( 5 ) --Sets the space in between the panels on the Y Axis by 5
-	--FavoritePanel.List:Dock(FILL)
-	FavoritePanel.List:SetSize(width - 10, h - 20 - offset)
-
-	function FavoritePanel.Scroll:Paint(pw, ph)
+    self.Scroll = vgui.Create( "DScrollPanel", self)
+	function self.Scroll:Paint(pw, ph)
 		surface.SetTexture(0)
 		surface.SetDrawColor(Color(50, 50, 50))
 		surface.DrawRect(0, 0, pw, ph)
 	end
 
-	Repopulate()
+	self.List = vgui.Create( "DIconLayout", self.Scroll)
 
-	FavoritePanel.AddFavorite = vgui.Create("DButton", FavoritePanel)
-	FavoritePanel.AddFavorite:SetSize(width, 20)
-	FavoritePanel.AddFavorite:SetPos(0, h - 20)
-	FavoritePanel.AddFavorite:SetText("Add Favorite")
+    self.SprayRoulette = vgui.Create("DImageButton", self)
+	self.SprayRoulette:SetSize(16, 16)
+	self.SprayRoulette:SetImage("icon16/cog.png")
+	self.SprayRoulette:SetTooltip("Random Spray! (use with caution)")
+	function self.SprayRoulette:DoClick()
+		RunConsoleCommand("sprayv2_random", "0")
+	end
 
-	function FavoritePanel.AddFavorite:DoClick()
-		Derma_StringRequest("Add a favorite", "URL","",function(text)
-			if text == "" then return end
-			if #text > 240 then return end
+    local function AddSpray(tbl)
+		if not tbl or tbl.url == "" then return end
 
-			for k,v in pairs(currentFolder) do
-				if v.url == text then return end
-			end
+        
+		for k,v in pairs(currentFolder) do
+			if tonumber(k) and v.url == tbl.url then return end
+		end
 
-			local tbl = {url = text, nsfw = false, superfav = false}
-			table.insert(currentFolder, tbl)
-			Repopulate()
+		table.insert(currentFolder, tbl)
+		self:Populate()
 
-			file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+		file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+	end
+
+	self.SaveSpray = vgui.Create("DImageButton", self)
+	self.SaveSpray:SetSize(16, 16)
+	self.SaveSpray:SetImage("icon16/picture_save.png")
+	self.SaveSpray:SetTooltip("Save current spray")
+	function self.SaveSpray:DoClick()
+		AddSpray(favorites.selected)
+	end
+
+	self.AddFavorite = vgui.Create("DButton", self)
+	self.AddFavorite:SetSize(10, 20)
+	self.AddFavorite:Dock(BOTTOM)
+	self.AddFavorite:SetText("Add Favorite")
+	function self.AddFavorite:DoClick()
+		Derma_StringRequest("Add a favorite", "URL", "", function(text)
+			AddSpray{url = text, nsfw = false}
 		end)
 	end
+
+    self.Scale = vgui.Create("DNumSlider", self)
+    self.Scale:SetText("")
+    self.Scale:SetSize(200, 16)
+    self.Scale:SetMin(0.25)
+    self.Scale:SetMax(2)
+    self.Scale:SetValue(self:GetCookieNumber("scale", 1))
+    function self.Scale.OnValueChanged()
+        self:Populate()
+    end
+
+    self:Populate()
+	self:MakePopup()
+end
+
+function DFavoritePanel:OnClose()
+    local w, h = self:GetSize()
+    local x, y = self:GetPos()
+    self:SetCookie("w", w)
+    self:SetCookie("h", h)
+    self:SetCookie("x", x)
+    self:SetCookie("y", y)
+    self:SetCookie("scale", self.Scale:GetValue())
+
+    DFrame.OnClose(self)
+end
+
+function DFavoritePanel:PerformLayout()
+	local w, h = self:GetSize()
+
+    self.Scroll:Dock(FILL)
+    self.List:Dock(FILL)
+	self.List:SetSpaceY( 5 )
+	self.List:SetSpaceX( 5 )
+
+
+    self.SaveSpray:SetPos(w - 120, 5)
+    self.SprayRoulette:SetPos(w - 144, 5)
+    self.Scale:SetPos(w - 144 - 200, 5)
+
+    DFrame.PerformLayout(self)
+end
+
+function DFavoritePanel:Populate()
+    self.List:Clear()
+	local function AddButton(v, folder, tab)
+        local sizeMul = 1 / self.Scale:GetValue()
+
+		local SprayPan = vgui.Create("DSprayPanel", self.List)
+		SprayPan:SetSize(128 * sizeMul, 128 * sizeMul)
+		SprayPan:SetSpray(v.url or "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png")
+		SprayPan:SetFavoriteTab(v)
+		if folder then
+			SprayPan:MakeFolder(tab)
+		end
+		self.List:Add(SprayPan)
+	end
+
+	local files, folders = {}, {}
+	for k,v in pairs(currentFolder) do
+		if not tonumber(k) then continue end
+		if v.isFolder or (v.name and v.name ~= "") then
+			table.insert(folders, v)
+		elseif v.url and v.url ~= "" then
+			if v.superfav ~= nil then v.superfav = nil end
+			table.insert(files, v)
+		end
+	end
+
+	table.sort(files, function(a, b) return a.url < b.url end)
+	table.sort(folders, function(a, b) return a.name < b.name end)
+
+	if #previousFolderStack > 0 then
+		AddButton({url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_back.png", name = "Back"}, true, previousFolderStack[#previousFolderStack])
+	end
+
+	for k,v in pairs(folders) do
+		AddButton(v, true)
+	end
+
+	for k,v in pairs(files) do
+		AddButton(v)
+	end
+
+    self.List:PerformLayout()
+    self.Scroll:PerformLayout()
+end
+
+vgui.Register("DSprayFavoritePanel", DFavoritePanel, "DFrame")
+
+concommand.Add("sprayv2_openfavorites", function()
+	if IsValid(FavoritePanel) then
+		FavoritePanel:Remove()
+	end
+
+    FavoritePanel = vgui.Create("DSprayFavoritePanel", vgui.GetWorldPanel())
 end)
 
 list.Set("DesktopWindows", "sprayv2", {
-	title = "Spray",
+	title = "Sprays",
 	icon = "icon16/folder_image.png",
 	width = 1,
 	height = 1,
