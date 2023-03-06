@@ -935,7 +935,7 @@ function SprayPanel:MakeFolder(previous)
 		self.ChangeImageButton:SetSize(16, 16)
 		self.ChangeImageButton:SetImage("icon16/image_edit.png")
 		function self.ChangeImageButton.DoClick(button)
-			Derma_StringRequest("Change Folder Image", "Enter a new image", self.tab.name, function(str)
+			Derma_StringRequest("Change Folder Image", "Enter a new image", self.tab.url, function(str)
 				self.tab.url = str
 				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
 				self:PopulateParent()
