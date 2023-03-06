@@ -828,7 +828,7 @@ function SprayPanel:Init()
 	function self.NSFWButton.DoClick(button)
 		self.tab.nsfw = not self.tab.nsfw
 		file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
-		if IsValid(FavoritePanel) then FavoritePanel:Populate() end
+		self:PopulateParent()
 	end
 
 	self.Checkmark = Material("icon16/accept.png")
@@ -884,11 +884,19 @@ function SprayPanel:Init()
 					end
 					AddPanel(receiver)
 					table.insert(currentFolder, newFolder)
-					if IsValid(FavoritePanel) then FavoritePanel:Populate() end
+					self:PopulateParent()
 				end, function() end, "Create", "Cancel")
 			end
 		end
 	end)
+end
+
+function SprayPanel:PopulateParent()
+	local t = self
+	while(IsValid(t) and not t.Populate) do
+		t = t:GetParent()
+	end
+	t:Populate()
 end
 
 function SprayPanel:SetFavoriteTab(tab)
@@ -919,7 +927,7 @@ function SprayPanel:MakeFolder(previous)
 			Derma_StringRequest("Rename Folder", "Enter a new name", self.tab.name, function(str)
 				self.tab.name = str
 				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
-				if IsValid(FavoritePanel) then FavoritePanel:Populate() end
+				self:PopulateParent()
 			end, function() end, "Rename", "Cancel")
 		end
 
@@ -927,14 +935,14 @@ function SprayPanel:MakeFolder(previous)
 		self.ChangeImageButton:SetSize(16, 16)
 		self.ChangeImageButton:SetImage("icon16/image_edit.png")
 		function self.ChangeImageButton.DoClick(button)
-			Derma_StringRequest("Rename Folder", "Enter a new image", self.tab.name, function(str)
+			Derma_StringRequest("Change Folder Image", "Enter a new image", self.tab.name, function(str)
 				self.tab.url = str
 				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
-				if IsValid(FavoritePanel) then FavoritePanel:Populate() end
+				self:PopulateParent()
 			end, function() 
                 self.tab.url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png"
 				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
-				if IsValid(FavoritePanel) then FavoritePanel:Populate() end
+				self:PopulateParent()
             end, "Change", "Default")
 		end
 	end
@@ -1022,7 +1030,7 @@ function SprayPanel:DoClick()
 			table.insert(previousFolderStack, currentFolder)
 			currentFolder = self.tab.contents
 		end
-		if IsValid(FavoritePanel) then FavoritePanel:Populate() end
+		self:PopulateParent()
 		return
 	end
 
@@ -1091,9 +1099,8 @@ function DFavoritePanel:Init()
 		end
 
 		table.insert(currentFolder, tbl)
-		self:Populate()
-
 		file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+		self:Populate()
 	end
 
 	self.SaveSpray = vgui.Create("DImageButton", self)
