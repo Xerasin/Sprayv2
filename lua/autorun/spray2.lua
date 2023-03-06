@@ -244,7 +244,7 @@ hook.Add("CreateMove", "sprayv2", function()
 	if is_down and input.WasKeyReleased(keyCode) then
 		is_down = false
 		net.Start("Sprayv2")
-            net.WriteTable(favorites.selected)
+			net.WriteTable(favorites.selected)
 		net.SendToServer()
 	end
 end)
@@ -861,7 +861,7 @@ function SprayPanel:Init()
 					local newFolder = {}
 					newFolder.isFolder = true
 					newFolder.name = str
-                    newFolder.url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png"
+					newFolder.url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png"
 					newFolder.contents = {}
 					local function AddPanel(v)
 						table.insert(newFolder.contents, v.tab)
@@ -931,7 +931,7 @@ function SprayPanel:MakeFolder(previous)
 			end, function() end, "Rename", "Cancel")
 		end
 
-        self.ChangeImageButton = vgui.Create("DImageButton", self)
+		self.ChangeImageButton = vgui.Create("DImageButton", self)
 		self.ChangeImageButton:SetSize(16, 16)
 		self.ChangeImageButton:SetImage("icon16/image_edit.png")
 		function self.ChangeImageButton.DoClick(button)
@@ -940,10 +940,10 @@ function SprayPanel:MakeFolder(previous)
 				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
 				self:PopulateParent()
 			end, function() 
-                self.tab.url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png"
+				self.tab.url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png"
 				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
 				self:PopulateParent()
-            end, "Change", "Default")
+			end, "Change", "Default")
 		end
 	end
 end
@@ -970,7 +970,7 @@ function SprayPanel:PerformLayout()
 		self.RenameButton:SetPos(w - 16, h - 16)
 	end
 
-    if IsValid(self.ChangeImageButton) then
+	if IsValid(self.ChangeImageButton) then
 		self.ChangeImageButton:SetPos(0, 0)
 	end
 
@@ -1065,15 +1065,15 @@ vgui.Register("DSprayPanel", SprayPanel, "DButton")
 
 local DFavoritePanel = {}
 function DFavoritePanel:Init()
-    self:SetCookieName("Sprayv2Favorites")
-    self:SetSize(self:GetCookieNumber("w", 420), self:GetCookieNumber("h", 525))
+	self:SetCookieName("Sprayv2Favorites")
+	self:SetSize(self:GetCookieNumber("w", 420), self:GetCookieNumber("h", 525))
 	self:SetPos(self:GetCookieNumber("x", 5), self:GetCookieNumber("y", 5))
 	self:SetTitle("Spray Favorites")
-    self:SetSizable(true)
-    self:SetDraggable(true)
+	self:SetSizable(true)
+	self:SetDraggable(true)
    
 
-    self.Scroll = vgui.Create( "DScrollPanel", self)
+	self.Scroll = vgui.Create( "DScrollPanel", self)
 	function self.Scroll:Paint(pw, ph)
 		surface.SetTexture(0)
 		surface.SetDrawColor(Color(50, 50, 50))
@@ -1082,7 +1082,7 @@ function DFavoritePanel:Init()
 
 	self.List = vgui.Create( "DIconLayout", self.Scroll)
 
-    self.SprayRoulette = vgui.Create("DImageButton", self)
+	self.SprayRoulette = vgui.Create("DImageButton", self)
 	self.SprayRoulette:SetSize(16, 16)
 	self.SprayRoulette:SetImage("icon16/cog.png")
 	self.SprayRoulette:SetTooltip("Random Spray! (use with caution)")
@@ -1090,10 +1090,10 @@ function DFavoritePanel:Init()
 		RunConsoleCommand("sprayv2_random", "0")
 	end
 
-    local function AddSpray(tbl)
+	local function AddSpray(tbl)
 		if not tbl or tbl.url == "" then return end
 
-        
+		
 		for k,v in pairs(currentFolder) do
 			if tonumber(k) and v.url == tbl.url then return end
 		end
@@ -1121,52 +1121,52 @@ function DFavoritePanel:Init()
 		end)
 	end
 
-    self.Scale = vgui.Create("DNumSlider", self)
-    self.Scale:SetText("")
-    self.Scale:SetSize(200, 16)
-    self.Scale:SetMin(0.25)
-    self.Scale:SetMax(2)
-    self.Scale:SetValue(self:GetCookieNumber("scale", 1))
-    function self.Scale.OnValueChanged()
-        self:Populate()
-    end
+	self.Scale = vgui.Create("DNumSlider", self)
+	self.Scale:SetText("")
+	self.Scale:SetSize(200, 16)
+	self.Scale:SetMin(0.25)
+	self.Scale:SetMax(2)
+	self.Scale:SetValue(self:GetCookieNumber("scale", 1))
+	function self.Scale.OnValueChanged()
+		self:Populate()
+	end
 
-    self:Populate()
+	self:Populate()
 	self:MakePopup()
 end
 
 function DFavoritePanel:OnClose()
-    local w, h = self:GetSize()
-    local x, y = self:GetPos()
-    self:SetCookie("w", w)
-    self:SetCookie("h", h)
-    self:SetCookie("x", x)
-    self:SetCookie("y", y)
-    self:SetCookie("scale", self.Scale:GetValue())
+	local w, h = self:GetSize()
+	local x, y = self:GetPos()
+	self:SetCookie("w", w)
+	self:SetCookie("h", h)
+	self:SetCookie("x", x)
+	self:SetCookie("y", y)
+	self:SetCookie("scale", self.Scale:GetValue())
 
-    DFrame.OnClose(self)
+	DFrame.OnClose(self)
 end
 
 function DFavoritePanel:PerformLayout()
 	local w, h = self:GetSize()
 
-    self.Scroll:Dock(FILL)
-    self.List:Dock(FILL)
+	self.Scroll:Dock(FILL)
+	self.List:Dock(FILL)
 	self.List:SetSpaceY( 5 )
 	self.List:SetSpaceX( 5 )
 
 
-    self.SaveSpray:SetPos(w - 120, 5)
-    self.SprayRoulette:SetPos(w - 144, 5)
-    self.Scale:SetPos(w - 144 - 200, 5)
+	self.SaveSpray:SetPos(w - 120, 5)
+	self.SprayRoulette:SetPos(w - 144, 5)
+	self.Scale:SetPos(w - 144 - 200, 5)
 
-    DFrame.PerformLayout(self)
+	DFrame.PerformLayout(self)
 end
 
 function DFavoritePanel:Populate()
-    self.List:Clear()
+	self.List:Clear()
 	local function AddButton(v, folder, tab)
-        local sizeMul = 1 / self.Scale:GetValue()
+		local sizeMul = 1 / self.Scale:GetValue()
 
 		local SprayPan = vgui.Create("DSprayPanel", self.List)
 		SprayPan:SetSize(128 * sizeMul, 128 * sizeMul)
@@ -1204,8 +1204,8 @@ function DFavoritePanel:Populate()
 		AddButton(v)
 	end
 
-    self.List:PerformLayout()
-    self.Scroll:PerformLayout()
+	self.List:PerformLayout()
+	self.Scroll:PerformLayout()
 end
 
 vgui.Register("DSprayFavoritePanel", DFavoritePanel, "DFrame")
@@ -1215,7 +1215,7 @@ concommand.Add("sprayv2_openfavorites", function()
 		FavoritePanel:Remove()
 	end
 
-    FavoritePanel = vgui.Create("DSprayFavoritePanel", vgui.GetWorldPanel())
+	FavoritePanel = vgui.Create("DSprayFavoritePanel", vgui.GetWorldPanel())
 end)
 
 list.Set("DesktopWindows", "sprayv2", {
