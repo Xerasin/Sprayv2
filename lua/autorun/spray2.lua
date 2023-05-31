@@ -28,7 +28,7 @@ if SERVER then
 	end)
 
 	local function addcmd()
-		aowl.AddCommand({"spraymenu", "spray", "sprayv2"}, function(ply, line)
+		aowl.AddCommand({"spraymenu", "sprays", "spray", "sprayv2"}, function(ply, line)
 			ply:ConCommand("sprayv2_openfavorites")
 		end)
 
@@ -178,9 +178,12 @@ function GetSprayCache(url, key, success, fail)
 		end
 	end
 
-	local getData
-	getData = function()
+	local running = false
+	local getData getData = function()
+		if running then return end
+		running = true
 		http.Post(SPRAYINFO_URL, {["url"] = url}, function(data, _, _, code)
+			running = false
 			local sprayData = util.JSONToTable(data)
 			if code ~= 200 or not sprayData then
 				timer.Remove(timerName)
@@ -200,6 +203,7 @@ function GetSprayCache(url, key, success, fail)
 				processQueue(sprayData)
 			end
 		end, function(err)
+			running = false
 			timer.Remove(timerName)
 			sprayinfo[url] = {["status"] = -3, ["status_text"] = ("Backend error %s"):format(err)}
 			if fail then fail(sprayinfo[url]) end
@@ -214,11 +218,10 @@ local baseMaterial = nil
 
 local is_down = false
 hook.Add("PlayerBindPress", "sprayv2", function(ply, bind, pressed)
-	if pressed and bind and bind:find("impulse 201") then
+	if pressed and bind and bind:find("impulse 201") and favorites.selected then
 		local trace = LocalPlayer():GetEyeTrace()
 		if trace.StartPos:Distance(trace.HitPos) <= 200 then
 			is_down = true
-
 			return true
 		end
 	elseif pressed and bind and bind == "+attack" and is_down then
@@ -241,7 +244,7 @@ hook.Add("CreateMove", "sprayv2", function()
 	if not key then return end
 	local keyCode = input.GetKeyCode(key)
 
-	if is_down and input.WasKeyReleased(keyCode) then
+	if is_down and input.WasKeyReleased(keyCode) and favorites.selected then
 		is_down = false
 		net.Start("Sprayv2")
 			net.WriteTable(favorites.selected)
@@ -508,8 +511,8 @@ function pmeta:StripSpray2()
 end
 
 hook.Add("InitPostEntity", "Sprayv2", function()
-	if favorites and favorites.selected and favorites.selected.url and favorites.selected.url ~= "" then
-		if LocalPlayer().SetNetData then LocalPlayer():SetNetData("sprayv2", favorites.selected) end
+	if favorites and favorites.selected and favorites.selected.url and favorites.selected.url ~= "" and LocalPlayer().SetNetData then
+		LocalPlayer():SetNetData("sprayv2", favorites.selected)
 	end
 end)
 
@@ -634,11 +637,14 @@ function Spray(ply, material, vec, norm, targetEnt, noSound, sprayData)
 			if w == nil or not IsValid(ply) or sprays[ply].material ~= material then clean() return end
 			if not w then return end
 
+
+			spraycache[material] = {w, h, httpMat}
+
 			local _, _, baseSprayMat = baseSpray()
 			if not baseSprayMat then return end
 
 			clean()
-			spraycache[material] = {w, h, httpMat}
+
 			local matname = "Sprayv2_" .. os.time() .. "_" .. (util.CRC(material) or "")
 
 			local tempMat
@@ -783,7 +789,6 @@ concommand.Add("sprayv2_random", function(ply, cmd, args)
 			net.SendToServer()
 		end
 
-		
 		file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
 		if LocalPlayer().SetNetData then LocalPlayer():SetNetData("sprayv2", favorites.selected) end
 	end)
@@ -808,25 +813,28 @@ function SprayPanel:Init()
 		Derma_Query("Are you sure you want to delete this?", "Deletion", "Yes", function()
 			if self.tab then
 				for k,v in pairs(currentFolder) do
-					if v == self.tab then
+					if tonumber(k) and v == self.tab then
 						self.Index = tonumber(k)
 					end
 				end
 
 				if not self.Index then
-					self:Remove()
+					self:PopulateParent()
 					return
 				end
 
 				table.remove(currentFolder, self.Index)
 				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
-				self:Remove()
+				self:PopulateParent()
 			end
 		end,"No",function() end)
 	end
 
 	function self.NSFWButton.DoClick(button)
 		self.tab.nsfw = not self.tab.nsfw
+		if favorites.selected.url == self.tab.url then
+			favorites.selected = self.tab
+		end
 		file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
 		self:PopulateParent()
 	end
@@ -834,68 +842,67 @@ function SprayPanel:Init()
 	self.Checkmark = Material("icon16/accept.png")
 	self.IsFolder = false
 	self:Droppable( "spraypanel" )
-	self:Receiver("spraypanel", function(receiver, tableOfDroppedPanels, isDropped, menuIndex, mouseX, mouseY)
-		if isDropped then
-			if receiver.IsFolder then
-				local drop = receiver.tab.contents
-				if self.PreviousButton then
-					drop = previousFolderStack[#previousFolderStack]
+	self:Receiver("spraypanel", self.HandleDrop)
+end
+
+function SprayPanel:HandleDrop(tableOfDroppedPanels, isDropped, menuIndex, mouseX, mouseY)
+	if not isDropped then return end
+	if self.IsFolder then
+		local drop = self.tab.contents
+		if self.PreviousButton then
+			drop = previousFolderStack[#previousFolderStack]
+		end
+		for k,v in pairs(tableOfDroppedPanels) do
+			if self ~= v then
+				table.insert(drop, v.tab)
+				for k2,v2 in pairs(currentFolder) do
+					if v2 == v.tab then v.Index = k2 end
 				end
-				for k,v in pairs(tableOfDroppedPanels) do
-					if receiver ~= v then
-						table.insert(drop, v.tab)
-						for k2,v2 in pairs(currentFolder) do
-							if v2 == v.tab then v.Index = k2 end
-						end
 
-						if isnumber(v.Index) then
-							table.remove(currentFolder, v.Index)
-						end
-
-						file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
-						v:Remove()
-					end
+				if isnumber(v.Index) then
+					table.remove(currentFolder, v.Index)
 				end
-			else
-				Derma_StringRequest("Create Folder", "Name the new folder", "", function(str)
-					local newFolder = {}
-					newFolder.isFolder = true
-					newFolder.name = str
-					newFolder.url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png"
-					newFolder.contents = {}
-					local function AddPanel(v)
-						table.insert(newFolder.contents, v.tab)
-						for k2,v2 in pairs(currentFolder) do
-							if v2 == v.tab then v.Index = k2 end
-						end
-
-						if isnumber(v.Index) then
-							table.remove(currentFolder, v.Index)
-						end
-
-						file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
-						v:Remove()
-
-					end
-					for k,v in pairs(tableOfDroppedPanels) do
-						if v ~= receiver then
-							AddPanel(v)
-						end
-					end
-					AddPanel(receiver)
-					table.insert(currentFolder, newFolder)
-					self:PopulateParent()
-				end, function() end, "Create", "Cancel")
 			end
 		end
-	end)
+		file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+		self:PopulateParent()
+	else
+		Derma_StringRequest("Create Folder", "Name the new folder", "", function(str)
+			local newFolder = {}
+			newFolder.isFolder = true
+			newFolder.name = str
+			newFolder.url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png"
+			newFolder.contents = {}
+			local function AddPanel(v)
+				table.insert(newFolder.contents, v.tab)
+				for k2,v2 in pairs(currentFolder) do
+					if v2 == v.tab then v.Index = k2 end
+				end
+
+				if isnumber(v.Index) then
+					table.remove(currentFolder, v.Index)
+				end
+			end
+
+			for k,v in pairs(tableOfDroppedPanels) do
+				if v ~= self then
+					AddPanel(v)
+				end
+			end
+			AddPanel(self)
+			table.insert(currentFolder, newFolder)
+			file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+			self:PopulateParent()
+		end, function() end, "Create", "Cancel")
+	end
 end
 
 function SprayPanel:PopulateParent()
 	local t = self
-	while(IsValid(t) and not t.Populate) do
+	while IsValid(t) and not t.Populate do
 		t = t:GetParent()
 	end
+	if not IsValid(t) or not t.Populate then return end
 	t:Populate()
 end
 
@@ -939,7 +946,7 @@ function SprayPanel:MakeFolder(previous)
 				self.tab.url = str
 				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
 				self:PopulateParent()
-			end, function() 
+			end, function()
 				self.tab.url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png"
 				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
 				self:PopulateParent()
@@ -1012,13 +1019,13 @@ function SprayPanel:Paint(pw, ph)
 			["xalign"] = TEXT_ALIGN_CENTER,
 			["yalign"] = TEXT_ALIGN_CENTER,
 		})
-	end
-
-	local spray = favorites.selected
-	if spray and spray.url == self.SprayURL then
-		surface.SetMaterial(self.Checkmark)
-		surface.SetDrawColor(Color(255, 255, 255))
-		surface.DrawTexturedRect(0, ph - 16, 16, 16)
+	else
+		local spray = favorites.selected
+		if spray and spray.url == self.SprayURL then
+			surface.SetMaterial(self.Checkmark)
+			surface.SetDrawColor(Color(255, 255, 255))
+			surface.DrawTexturedRect(0, ph - 16, 16, 16)
+		end
 	end
 end
 
@@ -1041,7 +1048,7 @@ function SprayPanel:DoClick()
 	if spray and spray.url == self.SprayURL then
 		favorites.selected = nil
 	else
-		favorites.selected = {url = self.SprayURL, nsfw = self.tab.nsfw}
+		favorites.selected = self.tab
 	end
 
 	file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
@@ -1071,7 +1078,6 @@ function DFavoritePanel:Init()
 	self:SetTitle("Spray Favorites")
 	self:SetSizable(true)
 	self:SetDraggable(true)
-   
 
 	self.Scroll = vgui.Create( "DScrollPanel", self)
 	function self.Scroll:Paint(pw, ph)
@@ -1093,7 +1099,6 @@ function DFavoritePanel:Init()
 	local function AddSpray(tbl)
 		if not tbl or tbl.url == "" then return end
 
-		
 		for k,v in pairs(currentFolder) do
 			if tonumber(k) and v.url == tbl.url then return end
 		end
@@ -1148,7 +1153,7 @@ function DFavoritePanel:OnClose()
 end
 
 function DFavoritePanel:PerformLayout()
-	local w, h = self:GetSize()
+	local w, _ = self:GetSize()
 
 	self.Scroll:Dock(FILL)
 	self.List:Dock(FILL)
@@ -1165,11 +1170,11 @@ end
 
 function DFavoritePanel:Populate()
 	self.List:Clear()
-	local function AddButton(v, folder, tab)
-		local sizeMul = 1 / self.Scale:GetValue()
 
+	local sizeMul = self.Scale:GetValue()
+	local function AddButton(v, folder, tab)
 		local SprayPan = vgui.Create("DSprayPanel", self.List)
-		SprayPan:SetSize(128 * sizeMul, 128 * sizeMul)
+		SprayPan:SetSize(128 / sizeMul, 128 / sizeMul)
 		SprayPan:SetSpray(v.url or "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png")
 		SprayPan:SetFavoriteTab(v)
 		if folder then
@@ -1210,12 +1215,13 @@ end
 
 vgui.Register("DSprayFavoritePanel", DFavoritePanel, "DFrame")
 
+local FavoritePanel
 concommand.Add("sprayv2_openfavorites", function()
 	if IsValid(FavoritePanel) then
 		FavoritePanel:Remove()
 	end
 
-	FavoritePanel = vgui.Create("DSprayFavoritePanel", vgui.GetWorldPanel())
+	FavoritePanel = vgui.Create("DSprayFavoritePanel")
 end)
 
 list.Set("DesktopWindows", "sprayv2", {
