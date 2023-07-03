@@ -1,6 +1,6 @@
 pcall(require, "urlimage")
-local SPRAYINFO_URL = "https://sprays.xerasin.com/"
-local RANDOMSPRAY_URL = "https://sprays.xerasin.com/random.php"
+local SPRAYINFO_URL = "https://sprays.xerasin.com/v1/get"
+local RANDOMSPRAY_URL = "https://sprays.xerasin.com/v1/random"
 module("spray2", package.seeall)
 local _M = _M
 local M = setmetatable({},{__index = function(s,k) return rawget(_M,k) end,__newindex = _M})
@@ -636,8 +636,6 @@ function Spray(ply, material, vec, norm, targetEnt, noSound, sprayData)
 
 			if w == nil or not IsValid(ply) or sprays[ply].material ~= material then clean() return end
 			if not w then return end
-
-
 			spraycache[material] = {w, h, httpMat}
 
 			local _, _, baseSprayMat = baseSpray()
@@ -832,7 +830,7 @@ function SprayPanel:Init()
 
 	function self.NSFWButton.DoClick(button)
 		self.tab.nsfw = not self.tab.nsfw
-		if favorites.selected.url == self.tab.url then
+		if favorites.selected and favorites.selected.url == self.tab.url then
 			favorites.selected = self.tab
 		end
 		file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
