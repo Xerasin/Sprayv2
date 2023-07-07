@@ -113,7 +113,7 @@ local surface = surface
 local cam = cam
 
 --local CurrentSpray = CreateClientConVar("sprayv2_spray", "", true, true)
-local sprayProps = CreateClientConVar("sprayv2_entities", "1", true, false, nil, 0, 1)
+local sprayProps = CreateClientConVar("sprayv2_entities", "0", true, false, nil, 0, 1)
 local maxVertex = CreateClientConVar("sprayv2_entities_maxvertexes", "512", true, false, "Max Vertexes that can be sprayed on", 10)
 local playSounds = CreateClientConVar("sprayv2_sounds", "1", true, false, nil, 0, 1)
 local showNSFW = CreateClientConVar("sprayv2_nsfw", "0", true, false, nil, 0, 1)
