@@ -73,7 +73,8 @@ if SERVER then
 		["mediaplayer_tv"] = true,
 		["mediaplayer_projector"] = true,
 		["mediaplayer_repeater"] = true,
-		["prop_dynamic"] = true
+		["prop_dynamic"] = true,
+		["prop_static"] = true
 	}
 	local function IsValidSprayTrace(trace)
 		if trace.HitPos:Distance(trace.StartPos) > 200 then return false end
@@ -643,8 +644,7 @@ function Spray(ply, material, vec, norm, targetEnt, noSound, sprayData)
 
 			clean()
 
-			local matname = "Sprayv2_" .. os.time() .. "_" .. (util.CRC(material) or "")
-
+			local matname = ("Sprayv2_%s_%s"):format(os.time(), util.CRC(material) or "")
 			local tempMat
 			if IsValid(targetEnt) then
 				tempMat = CreateMaterial(matname, "VertexLitGeneric", {
