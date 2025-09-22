@@ -1,25 +1,162 @@
 pcall(require, "urlimage")
 local SPRAYINFO_URL = "https://sprays.xerasin.com/v1/get"
+local SPRAYADD_URL = "https://sprays.xerasin.com/v1/add"
+local SPRAYLOGIN_URL = "https://sprays.xerasin.com/v1/login"
 local RANDOMSPRAY_URL = "https://sprays.xerasin.com/v1/random"
+local REPORTSPRAY_URL = "https://sprays.xerasin.com/v1/report"
 module("spray2", package.seeall)
 local _M = _M
 local M = setmetatable({},{__index = function(s,k) return rawget(_M,k) end,__newindex = _M})
 _M.M = M
 
-if SERVER then
-	AddCSLuaFile()
-	util.AddNetworkString("Sprayv2")
-	util.AddNetworkString("ClearSpray2")
+local STATUS = {
+	DELETED        = -7,
+	NEEDS_CREATED  = -6,
+	REQUIRES_TOKEN = -5,
+	BLACKLIST      = -4,
+	ERR_OTHER      = -3,
+	CANNOT_PROCESS = -2,
+	FAILED         = -1,
+	PROCESSING     = 0,
+	SUCCESS        = 1,
+}
+M.STATUS = STATUS
 
-	net.Receive("Sprayv2", function(len, ply)
-		ply:PostSpray(net.ReadTable())
+local STATUS_NAME = {}
+for k, v in pairs(STATUS) do
+	STATUS_NAME[v] = k
+end
+M.STATUS_NAME = STATUS_NAME
+
+local NET = {
+	Spray = 0,
+	ClearSpray = 1,
+	Token = 2,
+}
+M.NET = NET
+
+if SERVER then
+	local server_token = nil
+	local function createTable()
+		if not sql.TableExists("spraytoken") then
+			sql.Query([[
+				CREATE TABLE IF NOT EXISTS spraytoken (
+					id INTEGER PRIMARY KEY,
+					token TEXT NOT NULL
+				);
+			]])
+		end
+	end
+
+	local function saveToken(newToken)
+		createTable()
+		sql.Query(string.format([[
+			INSERT INTO spraytoken (id, token)
+			VALUES (1, '%s')
+			ON CONFLICT(id) DO UPDATE SET token=excluded.token;
+		]], sql.SQLStr(newToken, true)))
+		server_token = newToken
+	end
+
+	local function loadToken()
+		createTable()
+		local sql_token = sql.QueryValue([[SELECT token FROM spraytoken WHERE id = 1 LIMIT 1;]])
+		local err = sql.LastError()
+		if not err and sql_token then
+			server_token = sql_token
+		end
+	end
+
+	concommand.Add("sprayv2_token", function(ply, cmd, args)
+		if not ply:IsSuperAdmin() then return end
+		if #args ~= 1 then return end
+		saveToken(args[1])
+		ply:ChatPrint(string.format("Set sprayv2 server token to %s.", args[1]))
 	end)
 
+	local function sendToken(ply, valid, token_data)
+		if not IsValid(ply) then return end
+
+		net.Start("Sprayv2")
+			net.WriteInt(NET.Token, 8)
+			net.WriteBool(valid)
+			if valid and token_data and token_data.token and token_data.expiry then
+				net.WriteString(token_data.token)
+				net.WriteUInt(token_data.expiry, 32)
+			end
+		net.Send(ply)
+	end
+
+	local tokenCache = {}
+	local function onReceiveTokenRequest(ply)
+		if not IsValid(ply) then return end
+		local steamid = ply:SteamID64()
+		local cached = tokenCache[steamid]
+
+		if cached and cached.expiry > os.time() then
+			sendToken(ply, true, cached)
+			return
+		end
+
+		if not server_token then
+			loadToken()
+		end
+
+		http.Post(SPRAYLOGIN_URL, {["server_token"] = server_token, ["steamid"] = steamid}, function(data, _, _, code)
+			if code == 200 then
+				local token_data = util.JSONToTable(data)
+				if not token_data or not token_data["token"] then
+					print("Invalid token response:", data)
+					return
+				end
+				if IsValid(ply) then
+					cached = {
+						token = token_data["token"],
+						expiry = token_data["expiry_unix"],
+					}
+					tokenCache[steamid] = cached
+					sendToken(ply, true, cached)
+				end
+			else
+				local error_data = data
+
+				if code == 400 then
+					local json = util.JSONToTable(data)
+					if json and json["error"] then
+						error_data = json["error"]
+					end
+				end
+
+				if IsValid(ply) then
+					sendToken(ply, false)
+				end
+
+				if error_data == "Valid token already exists." then
+					return
+				end
+
+				print(string.format("Sprayv2 token generation failed for %s (HTTP %d): %s", steamid, code, error_data))
+			end
+		end)
+	end
+
+	hook.Add("Initialize", "sprayv2", function()
+		loadToken()
+	end)
+
+	util.AddNetworkString("Sprayv2")
+	net.Receive("Sprayv2", function(len, ply)
+		local networkID = net.ReadInt(8)
+		if networkID == NET.Spray then
+			ply:PostSpray(net.ReadTable())
+		elseif networkID == NET.Token then
+			onReceiveTokenRequest(ply)
+		end
+	end)
 
 	hook.Add("PlayerSpray", "Sprayv2", function(ply)
 		if ply:PostSpray() then return true end
 	end)
-
 
 	hook.Add("NetData", "sprayv2", function(pl, key, value)
 		if key == "sprayv2" then
@@ -36,14 +173,10 @@ if SERVER then
 			if target and ply:IsSuperAdmin() then
 				local targetPly = easylua.FindEntity(target)
 				if IsValid(targetPly) and targetPly:IsPlayer() then
-					net.Start("ClearSpray2")
-						net.WriteEntity(targetPly)
-					net.Broadcast()
+					targetPly:StripSpray2()
 				end
 			else
-				net.Start("ClearSpray2")
-					net.WriteEntity(ply)
-				net.Broadcast()
+				ply:StripSpray2()
 			end
 		end)
 	end
@@ -59,7 +192,8 @@ if SERVER then
 
 	local pmeta = FindMetaTable("Player")
 	function pmeta:StripSpray2()
-		net.Start("ClearSpray2")
+		net.Start("Sprayv2")
+			net.WriteInt(NET.ClearSpray, 8)
 			net.WriteEntity(self)
 		net.Broadcast()
 	end
@@ -92,8 +226,8 @@ if SERVER then
 			local trace = self:GetEyeTrace()
 			if IsValidSprayTrace(trace) then
 				self.LastSpray = CurTime()
-				http.Post(SPRAYINFO_URL, {["url"] = spray.url})
 				net.Start("Sprayv2")
+					net.WriteInt(NET.Spray, 8)
 					net.WriteEntity(self)
 					net.WriteString(spray.url)
 					net.WriteVector(trace.HitPos)
@@ -152,12 +286,48 @@ M.sprayinfoqueue = sprayinfoqueue
 local sprayinfo = M.sprayinfo or {}
 M.sprayinfo = sprayinfo
 
+local requestingToken = false
+function requestToken()
+	if requestingToken then return end
+	requestingToken = true
+	net.Start("Sprayv2")
+		net.WriteInt(NET.Token, 8)
+	net.SendToServer()
+end
+
+function isTokenValid()
+	if not favorites.token or type(favorites.token) == "string" then
+		return false
+	end
+
+	return favorites.token.expiry > os.time()
+end
+
+function getToken()
+	if not isTokenValid() then
+		requestToken()
+	end
+
+	if favorites.token and type(favorites.token) == "table" then
+		return favorites.token.token
+	end
+end
+
+local function WriteFavorites()
+	file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+end
+
+local shouldUseAdd = {
+	["UI"] = true,
+	["Preview"] = true,
+}
+
 function GetSprayCache(url, key, success, fail)
 	if sprayinfo[url] then
 		local sprayData = sprayinfo[url]
-		if sprayData["status"] > 0 and success then success(sprayData)
-		elseif sprayData["status"] < 0 and fail then fail(sprayData) end
-		return
+		if sprayData["status"] == 0 and (sprayData["time_out"] or 0) > os.time() then return
+		elseif sprayData["status"] > 0 and success then return success(sprayData)
+		elseif sprayData["status"] < 0 and fail then return fail(sprayData) end
 	end
 
 	if not sprayinfoqueue[url] then sprayinfoqueue[url] = {} end
@@ -183,7 +353,11 @@ function GetSprayCache(url, key, success, fail)
 	local getData getData = function()
 		if running then return end
 		running = true
-		http.Post(SPRAYINFO_URL, {["url"] = url}, function(data, _, _, code)
+		if not isTokenValid() then
+			requestToken()
+		end
+		local useAdd = shouldUseAdd[key] == true
+		http.Post(useAdd and SPRAYADD_URL or SPRAYINFO_URL, {["url"] = url, ["token"] = getToken()}, function(data, _, _, code)
 			running = false
 			local sprayData = util.JSONToTable(data)
 			if code ~= 200 or not sprayData then
@@ -194,14 +368,23 @@ function GetSprayCache(url, key, success, fail)
 			end
 
 			sprayData["status"] = tonumber(sprayData["status"])
-			if sprayData["status"] == 0 then
+			sprayData["time_out"] = tonumber(sprayData["time_out"])
+
+			if sprayData["status"] == 0 and (sprayData["time_out"] or 0) < os.time() then
 				if not timer.Exists(timerName) then
 					timer.Create(timerName, 0.1, 30, getData)
 				end
 			else
 				timer.Remove(timerName)
 				sprayinfo[url] = sprayData
-				processQueue(sprayData)
+
+				if (sprayData["time_out"] or 0) > os.time() then
+					local msg = ("Sprayv2: %q is being rated limited by Imgur nothing I can do. Retrying at %s."):format(url, os.date("%x %X", sprayData["time_out"]))
+					print(msg)
+					return
+				else
+					processQueue(sprayData)
+				end
 			end
 		end, function(err)
 			running = false
@@ -215,7 +398,57 @@ end
 
 local currentFolder = favorites
 local previousFolderStack = {}
+local waitingForToken = {}
 local baseMaterial = nil
+local FavoritePanel
+
+local function AddSpray(tbl)
+	if not tbl or tbl.url == "" then return end
+
+	for k, v in pairs(currentFolder) do
+		if tonumber(k) and v.url == tbl.url then
+			return
+		end
+	end
+
+	if not isTokenValid() then
+		return requestToken()
+	end
+
+	http.Post(SPRAYADD_URL, {["url"] = tbl.url, ["token"] = getToken()}, function(data, _, _, code)
+		local sprayData = util.JSONToTable(data)
+		if code ~= 200 or not sprayData then return end
+
+		local status = tonumber(sprayData.status)
+		sprayData.status = status
+
+		if status >= 0 then
+			table.insert(currentFolder, tbl)
+			WriteFavorites()
+			if IsValid(FavoritePanel) then
+				FavoritePanel:Populate()
+			end
+
+		elseif status == STATUS.REQUIRES_TOKEN then
+			table.insert(waitingForToken, tbl)
+			requestToken()
+
+		else
+			LocalPlayer():ChatPrint(string.format(
+				"Cannot process %s (%s): %s",
+				tbl.url,
+				STATUS_NAME[status] or status,
+				sprayData.status_text or "Unknown error"
+			))
+		end
+	end)
+end
+local function processWaitingQueue()
+	while #waitingForToken > 0 do
+		local tbl = table.remove(waitingForToken, 1)
+		AddSpray(tbl)
+	end
+end
 
 local is_down = false
 hook.Add("PlayerBindPress", "sprayv2", function(ply, bind, pressed)
@@ -248,6 +481,7 @@ hook.Add("CreateMove", "sprayv2", function()
 	if is_down and input.WasKeyReleased(keyCode) and favorites.selected then
 		is_down = false
 		net.Start("Sprayv2")
+			net.WriteInt(NET.Spray, 8)
 			net.WriteTable(favorites.selected)
 		net.SendToServer()
 	end
@@ -449,30 +683,43 @@ cvars.AddChangeCallback("sprayv2_entities", function(cvar, oldValue, newValue)
 	end
 end)
 
-net.Receive("ClearSpray2", function()
-	local ply = net.ReadEntity()
-	if IsValid(ply) and ply:IsPlayer() then
-		ply:StripSpray2()
-	end
-end)
-
 net.Receive("Sprayv2", function()
-	local ply = net.ReadEntity()
-	if not IsValid(ply) then return end
-	local material = net.ReadString()
-	local vec = net.ReadVector()
-	local norm = net.ReadVector()
-	local targetEntIndex = net.ReadInt(32)
-	local isWorld = net.ReadBool()
+	local networkID = net.ReadInt(8)
+	if networkID == NET.Spray then
+		local ply = net.ReadEntity()
+		if not IsValid(ply) then return end
+		local material = net.ReadString()
+		local vec = net.ReadVector()
+		local norm = net.ReadVector()
+		local targetEntIndex = net.ReadInt(32)
+		local isWorld = net.ReadBool()
 
-	local sprayData = net.ReadTable() or {}
+		local sprayData = net.ReadTable() or {}
 
-	local targetEnt = Entity(targetEntIndex)
+		local targetEnt = Entity(targetEntIndex)
 
-	if IsValid(targetEnt) or isWorld then
-		spray2.Spray(ply, material, vec, norm, targetEnt, not playSounds:GetBool(), sprayData)
-	elseif not isWorld then
-		entitycache[ply:SteamID64()] = {targetEntIndex, ply, material, vec, norm, sprayData}
+		if IsValid(targetEnt) or isWorld then
+			spray2.Spray(ply, material, vec, norm, targetEnt, not playSounds:GetBool(), sprayData)
+		elseif not isWorld then
+			entitycache[ply:SteamID64()] = {targetEntIndex, ply, material, vec, norm, sprayData}
+		end
+	elseif networkID == NET.ClearSpray then
+		local ply = net.ReadEntity()
+		if IsValid(ply) and ply:IsPlayer() then
+			ply:StripSpray2()
+		end
+	elseif networkID == NET.Token then
+		wasCreated = net.ReadBool()
+		requestingToken = false
+		if wasCreated then
+			sprayToken = net.ReadString()
+			expiryTime = net.ReadUInt(32)
+			if sprayToken then
+				processWaitingQueue()
+				favorites.token = {token = sprayToken, expiry = expiryTime}
+				WriteFavorites()
+			end
+		end
 	end
 end)
 
@@ -515,6 +762,8 @@ hook.Add("InitPostEntity", "Sprayv2", function()
 	if favorites and favorites.selected and favorites.selected.url and favorites.selected.url ~= "" and LocalPlayer().SetNetData then
 		LocalPlayer():SetNetData("sprayv2", favorites.selected)
 	end
+
+	timer.Simple(0, function() if not isTokenValid() then requestToken() end end)
 end)
 
 cvars.AddChangeCallback("sprayv2_nsfw", function(name, old, new)
@@ -682,6 +931,9 @@ function Spray(ply, material, vec, norm, targetEnt, noSound, sprayData)
 					if validEnt then timer.Simple(0.05, DetectCrashEnd) end
 
 					sprays[ply]["spraymat"] = tempMat
+					if data["steamid"] then
+						sprays[ply]["o_steamid"] = data["steamid"]
+					end
 					hook.Remove("PostDrawTranslucentRenderables", ply:UniqueID() .. "SprayInfo")
 				end
 			end
@@ -696,16 +948,145 @@ function Spray(ply, material, vec, norm, targetEnt, noSound, sprayData)
 	end)
 end
 
-local lastKeyDown = false
+local function SprayReportUI(title, text, matName, default, callbackOK, callbackCancel, okText, cancelText)
+	okText = okText or "OK"
+	cancelText = cancelText or "Cancel"
+	local w, h = 420, 128 + 50 + 10
+
+	local frame = vgui.Create("DFrame")
+	frame:SetTitle(title)
+	frame:SetSize(w, h)
+	frame:Center()
+	frame:MakePopup()
+
+	local img = vgui.Create("DImage", frame)
+	img:SetPos(10, 50)
+	img:SetSize(128, 128)
+	local mat = spraycache[matName] and spraycache[matName][3]
+	if mat and not mat:IsError() then
+		img:SetMaterial(mat)
+	end
+	img.Paint = function(self, iW, iH)
+		surface.SetDrawColor(40, 40, 40, 255)
+		surface.DrawRect(0, 0, iW, iH)
+
+		DImage.Paint(self, iW, iH)
+	end
+
+	local lbl2 = vgui.Create("DLabel", frame)
+	lbl2:SetPos(10, 25)
+	lbl2:SetSize(400, 20)
+	lbl2:SetText(matName)
+
+	local lbl = vgui.Create("DLabel", frame)
+	lbl:SetPos(128 + 20, h -25 - 25 - 10 - 25)
+	lbl:SetSize(250, 20)
+	lbl:SetText(text)
+
+	local entry = vgui.Create("DTextEntry", frame)
+	entry:SetPos(128 + 20, h - 25 - 25 - 10)
+	entry:SetSize(w - 128 - 20 - 10, 20)
+	entry:SetText(default or "")
+	entry:RequestFocus()
+
+	local btnOK = vgui.Create("DButton", frame)
+	btnOK:SetSize(100, 25)
+	btnOK:SetPos(128 + 20, h - 25 - 10)
+	btnOK:SetText(okText)
+	btnOK.DoClick = function()
+		if callbackOK then callbackOK(entry:GetText()) end
+		frame:Close()
+	end
+
+	local btnCancel = vgui.Create("DButton", frame)
+	btnCancel:SetSize(100, 25)
+	btnCancel:SetPos(310, h - 25 - 10)
+	btnCancel:SetText(cancelText)
+	btnCancel.DoClick = function()
+		if callbackCancel then callbackCancel(entry:GetText()) end
+		frame:Close()
+	end
+end
+
+local function handleClick(tbl)
+	local ply = LocalPlayer()
+
+	local function reportSpray()
+		SprayReportUI(
+			"Are you sure you want to report this spray?",
+			"Insert reason",
+			tbl.material,
+			"",
+			function(reason)
+				if not reason or reason:Trim() == "" then
+					ply:ChatPrint("You must provide a reason to report this spray.")
+					return
+				end
+
+				if not isTokenValid() then
+					requestToken()
+					ply:ChatPrint("Requesting token, try again in a moment.")
+					return
+				end
+
+				http.Post(REPORTSPRAY_URL, { url = tbl.material, token = getToken(), reason = reason },
+					function(data, _, _, code)
+						if code ~= 200 then
+							if code == 429 then
+								ply:ChatPrint("You're reporting sprays too fast! Slow down.")
+							else
+								ply:ChatPrint("Failed to report spray, backend error.")
+							end
+							return
+						end
+
+						local resp = util.JSONToTable(data)
+						if resp and resp.status == STATUS.SUCCESS then
+							ply:ChatPrint("Spray reported, thank you!")
+						else
+							ply:ChatPrint("Failed to report spray: " .. (resp and resp.status_text or "Unknown error"))
+						end
+					end,
+					function()
+						ply:ChatPrint("Failed to report spray, backend error.")
+					end
+				)
+			end,
+			function() end,
+			"Yes",
+			"Cancel"
+		)
+	end
+
+	if ply:KeyDown(IN_WALK) then
+		if ply:KeyDown(IN_DUCK) then
+			reportSpray()
+		elseif tbl.o_steamid then
+			gui.OpenURL(string.format("https://steamcommunity.com/profiles/%s", tbl.o_steamid))
+		end
+		return
+	end
+
+	local copyTbl = table.Copy(tbl)
+	copyTbl.vec = nil
+	copyTbl.ang = nil
+	copyTbl.ent = nil
+
+	local infoJSON = util.TableToJSON(copyTbl, true)
+	SetClipboardText(infoJSON)
+	ply:ChatPrint("Spray info copied to clipboard!")
+end
+
+local lastKeyAttack = false
 hook.Add("PostDrawTranslucentRenderables", "SprayInfo", function()
 	local inSpeed = LocalPlayer():KeyDown(IN_SPEED)
+	local firstClick = true
 	for k,tbl in pairs(sprays) do
 		if tbl and inSpeed then
 			local vec = tbl.vec
 			local ply = tbl.ply
 			local ang = tbl.ang
 			local material = tbl.material
-
 
 			if IsValid(tbl.ent) then
 				vec = tbl.ent:LocalToWorld(tbl.lvec)
@@ -717,18 +1098,34 @@ hook.Add("PostDrawTranslucentRenderables", "SprayInfo", function()
 			local scale = 0.1
 			cam.Start3D2D(vec + ang:Up() * 0.1 - ang:Forward() * SpraySize / 2 - ang:Right() * SpraySize / 2, ang, scale)
 				local w,h = SpraySize * 1 / scale, SpraySize * 1 / scale
-				local info_string = string.format("Player: %s \nPlayer ID: %s \nURL: %s\n%s", ply_name, ply_id, material, tbl.nsfw and "!! Marked NSFW !!" or "")
-				local t = string.Explode("\n", info_string)
-				for I = 1, #t do
+				local baseY = 0
+				local lineHeight = 25
+
+				local lines = {
+					{ text = "Player: " .. ply_name, font = "SprayFontInfo", color = Color(255, 255, 255, 255) },
+					{ text = "Player ID: " .. ply_id, font = "SprayFontInfo", color = Color(255, 255, 255, 255) },
+				}
+
+				if tbl.o_steamid then
+					table.insert(lines, { text = "Poster ID: " .. tbl.o_steamid, font = "SprayFontInfo", color = Color(255, 255, 255) })
+				end
+
+				table.insert(lines, { text = "URL: " .. material, font = "SprayFontInfo2", color = Color(255, 255, 255, 255) })
+				if tbl.nsfw then
+					table.insert(lines, { text = "!! Marked NSFW !!", font = "SprayFontInfo", color = Color(255, 0, 0) })
+				end
+
+				for i, line in ipairs(lines) do
 					draw.Text({
-						["pos"] = {0, 25 * (I - 1)},
-						["color"] = I == 4 and Color(255, 0, 0) or Color(255, 255, 255, 255),
-						["text"] = t[I],
-						["font"] = I ~= 3 and "SprayFontInfo" or "SprayFontInfo2",
-						["xalign"] = TEXT_ALIGN_LEFT,
-						["yalign"] = TEXT_ALIGN_TOP,
+						pos = {0, baseY + lineHeight * (i - 1)},
+						color = line.color,
+						text = line.text,
+						font = line.font,
+						xalign = TEXT_ALIGN_LEFT,
+						yalign = TEXT_ALIGN_TOP,
 					})
 				end
+
 				local function drawCircle( x, y, radius, seg )
 					local cir = {}
 
@@ -763,34 +1160,58 @@ hook.Add("PostDrawTranslucentRenderables", "SprayInfo", function()
 					["xalign"] = TEXT_ALIGN_CENTER,
 					["yalign"] = TEXT_ALIGN_CENTER,
 				})
-				if LocalPlayer():KeyDown(IN_ATTACK) and not lastKeyDown then
+				if LocalPlayer():KeyDown(IN_ATTACK) and not lastKeyAttack then
 					local trace = LocalPlayer():GetEyeTrace()
-					if trace.HitPos:Distance(vec) < selectsize then
-						LocalPlayer():ChatPrint("Spray Info copied to clipboard!")
-						SetClipboardText(info_string)
+					if trace.HitPos:Distance(vec) < selectsize and firstClick then
+						handleClick(tbl)
+						firstClick = false
 					end
 				end
 			cam.End3D2D()
 		end
 	end
-	lastKeyDown = LocalPlayer():KeyDown(IN_ATTACK)
+	lastKeyAttack = LocalPlayer():KeyDown(IN_ATTACK)
 end)
 
 concommand.Add("sprayv2_random", function(ply, cmd, args)
-	http.Fetch(RANDOMSPRAY_URL, function(data, _, _, code)
+	if not isTokenValid() then
+		return requestToken()
+	end
+
+	http.Post(RANDOMSPRAY_URL, {["token"] = getToken()}, function(data, _, _, code)
 		if code ~= 200 then return end
 
 		favorites.selected = {url = data, nsfw = true}
 		if (not args or #args == 0) or tobool(args[1]) then
+			-- Send a request to spray the image
 			net.Start("Sprayv2")
+				net.WriteInt(NET.Spray, 8)
 				net.WriteTable(favorites.selected)
 			net.SendToServer()
 		end
 
-		file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+		WriteFavorites()
 		if LocalPlayer().SetNetData then LocalPlayer():SetNetData("sprayv2", favorites.selected) end
 	end)
 end)
+
+
+concommand.Add("sprayv2_clear", function(ply, cmd, args)
+	favorites.selected = nil
+
+	WriteFavorites()
+	if LocalPlayer().SetNetData then LocalPlayer():SetNetData("sprayv2", favorites.selected) end
+end)
+
+
+concommand.Add("sprayv2_openfavorites", function()
+	if IsValid(FavoritePanel) then
+		FavoritePanel:Remove()
+	end
+
+	FavoritePanel = vgui.Create("DSprayFavoritePanel")
+end)
+
 
 local SprayPanel = {}
 function SprayPanel:Init()
@@ -822,7 +1243,7 @@ function SprayPanel:Init()
 				end
 
 				table.remove(currentFolder, self.Index)
-				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+				WriteFavorites()
 				self:PopulateParent()
 			end
 		end,"No",function() end)
@@ -833,7 +1254,9 @@ function SprayPanel:Init()
 		if favorites.selected and favorites.selected.url == self.tab.url then
 			favorites.selected = self.tab
 		end
-		file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+
+		http.Post(SPRAYADD_URL, {["url"] = favorites.selected.url, ["token"] = getToken(), ["nsfw"] = favorites.selected.nsfw and "1" or "0"})
+		WriteFavorites()
 		self:PopulateParent()
 	end
 
@@ -862,7 +1285,7 @@ function SprayPanel:HandleDrop(tableOfDroppedPanels, isDropped, menuIndex, mouse
 				end
 			end
 		end
-		file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+		WriteFavorites()
 		self:PopulateParent()
 	else
 		Derma_StringRequest("Create Folder", "Name the new folder", "", function(str)
@@ -889,7 +1312,7 @@ function SprayPanel:HandleDrop(tableOfDroppedPanels, isDropped, menuIndex, mouse
 			end
 			AddPanel(self)
 			table.insert(currentFolder, newFolder)
-			file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+			WriteFavorites()
 			self:PopulateParent()
 		end, function() end, "Create", "Cancel")
 	end
@@ -931,7 +1354,7 @@ function SprayPanel:MakeFolder(previous)
 		function self.RenameButton.DoClick(button)
 			Derma_StringRequest("Rename Folder", "Enter a new name", self.tab.name, function(str)
 				self.tab.name = str
-				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+				WriteFavorites()
 				self:PopulateParent()
 			end, function() end, "Rename", "Cancel")
 		end
@@ -942,11 +1365,11 @@ function SprayPanel:MakeFolder(previous)
 		function self.ChangeImageButton.DoClick(button)
 			Derma_StringRequest("Change Folder Image", "Enter a new image", self.tab.url, function(str)
 				self.tab.url = str
-				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+				WriteFavorites()
 				self:PopulateParent()
 			end, function()
 				self.tab.url = "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png"
-				file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+				WriteFavorites()
 				self:PopulateParent()
 			end, "Change", "Default")
 		end
@@ -1047,9 +1470,10 @@ function SprayPanel:DoClick()
 		favorites.selected = nil
 	else
 		favorites.selected = self.tab
+		http.Post(SPRAYADD_URL, {["url"] = favorites.selected.url, ["token"] = getToken(), ["nsfw"] = favorites.selected.nsfw and "1" or "0"})
 	end
 
-	file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
+	WriteFavorites()
 	if LocalPlayer().SetNetData then LocalPlayer():SetNetData("sprayv2", favorites.selected) end
 end
 
@@ -1064,7 +1488,6 @@ function SprayPanel:DoRightClick()
 		dMenu:Open()
 	end
 end
-
 
 vgui.Register("DSprayPanel", SprayPanel, "DButton")
 
@@ -1094,16 +1517,12 @@ function DFavoritePanel:Init()
 		RunConsoleCommand("sprayv2_random", "0")
 	end
 
-	local function AddSpray(tbl)
-		if not tbl or tbl.url == "" then return end
-
-		for k,v in pairs(currentFolder) do
-			if tonumber(k) and v.url == tbl.url then return end
-		end
-
-		table.insert(currentFolder, tbl)
-		file.Write("sprayfavorites.txt", util.TableToJSON(favorites))
-		self:Populate()
+	self.ClearSpray = vgui.Create("DImageButton", self)
+	self.ClearSpray:SetSize(16, 16)
+	self.ClearSpray:SetImage("icon16/bomb.png")
+	self.ClearSpray:SetTooltip("Clear Spray Selection")
+	function self.ClearSpray:DoClick()
+		RunConsoleCommand("sprayv2_clear")
 	end
 
 	self.SaveSpray = vgui.Create("DImageButton", self)
@@ -1160,8 +1579,9 @@ function DFavoritePanel:PerformLayout()
 
 
 	self.SaveSpray:SetPos(w - 120, 5)
-	self.SprayRoulette:SetPos(w - 144, 5)
-	self.Scale:SetPos(w - 144 - 200, 5)
+	self.ClearSpray:SetPos(w - 144, 5)
+	self.SprayRoulette:SetPos(w - 168, 5)
+	self.Scale:SetPos(w - 168 - 200, 5)
 
 	DFrame.PerformLayout(self)
 end
@@ -1207,20 +1627,12 @@ function DFavoritePanel:Populate()
 		AddButton(v)
 	end
 
-	self.List:PerformLayout()
+	self.List:Layout()
 	self.Scroll:PerformLayout()
 end
 
 vgui.Register("DSprayFavoritePanel", DFavoritePanel, "DFrame")
 
-local FavoritePanel
-concommand.Add("sprayv2_openfavorites", function()
-	if IsValid(FavoritePanel) then
-		FavoritePanel:Remove()
-	end
-
-	FavoritePanel = vgui.Create("DSprayFavoritePanel")
-end)
 
 list.Set("DesktopWindows", "sprayv2", {
 	title = "Sprays",
