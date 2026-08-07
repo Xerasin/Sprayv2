@@ -309,7 +309,7 @@ end)
 
 hook.Add("InitPostEntity", "Sprayv2", function()
     local currentSpray = spray2.GetCurrentSpray()
-    if favorites and currentSpray and currentSpray.url and currentSpray.url ~= "" and LocalPlayer().SetNetData then
+    if currentSpray and currentSpray.url and currentSpray.url ~= "" and LocalPlayer().SetNetData then
         LocalPlayer():SetNetData("sprayv2", currentSpray)
     end
 

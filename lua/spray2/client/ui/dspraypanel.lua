@@ -16,35 +16,84 @@ function SprayPanel:Init()
 
     self.NSFWButton = vgui.Create("DImageButton", self)
     self.NSFWButton:SetSize(16, 16)
-    self.NSFWButton:SetImage("icon16/error.png")
+    self.NSFWButton:SetImage("icon16/information.png")
+    self.NSFWButton:SetEnabled(false)
 
     function self.RemoveButton.DoClick()
-        Derma_Query("Are you sure you want to delete this?", "Deletion", "Yes", function()
-            self:GetParentSprayList():DeleteSpray(self.tab)
-        end,"No",function() end)
+        local parent = self:GetParentSprayList()
+
+        local str = "Are you sure you want to delete this spray?"
+        if parent:IsFavorites() then
+            str = "Are you sure you want to delete this spray?\n\nThis will only delete it locally. It will still exist on the backend and may continue to appear in roulettes. Use `sprayv2_viewsprays` in console to delete it permanently."
+        end
+        Derma_Query(
+            str,
+            "Deletion",
+            "Yes",function()
+                if not IsValid(parent) then return end
+
+                parent:DeleteSpray(self.tab)
+            end,
+            "No", function() end)
     end
 
     function self.NSFWButton.DoClick()
-        self.tab.nsfw = not self.tab.nsfw
-        local current = spray2.GetCurrentSpray()
-        if current and current.url == self.tab.url then
-            spray2.SetCurrentSpray(self.tab)
-        end
+        if self.Locked then return end
+        self.Locked = true
 
-        http.Post(URLS.SPRAYADD, {
-            ["url"]   = self.tab.url,
-            ["token"] = spray2.GetToken(),
-            ["nsfw"]  = self.tab.nsfw and "1" or "0"
-        })
-        spray2.WriteFavorites()
-        self:PopulateParent()
+        local newState = not self.tab.nsfw
+
+        http.Post(URLS.SPRAYNSFW, {
+            url = self.tab.url,
+            token = spray2.GetToken(),
+            nsfw = newState and "1" or "0"
+        }, function(data, _, _, code)
+            if not IsValid(self) then return end
+
+            if code == 200 then
+                local json = util.JSONToTable(data)
+                if not json or json.status ~= spray2.STATUS.SUCCESS then
+                    self.Locked = false
+                    return
+                end
+
+                spray2.UpdateCachedNSFW(self.tab.url, json.nsfw)
+                self.tab.nsfw = json.nsfw
+                self:UpdateNSFW()
+            end
+
+            self.Locked = false
+        end)
+
+        self:UpdateNSFW()
     end
 
     self:Droppable("spraypanel")
     self:Receiver("spraypanel", self.HandleDrop)
+
+    self.readOnly = false
+    self.dontHideDelete = false
+end
+
+function SprayPanel:SetReadOnly(readOnly, dontHideDelete)
+    self.readOnly = readOnly
+    self.dontHideDelete = dontHideDelete
+
+    if IsValid(self.RemoveButton) then
+        self.RemoveButton:SetVisible((not readOnly) or dontHideDelete)
+    end
+
+    if IsValid(self.RenameButton) then
+        self.RenameButton:SetVisible(not readOnly)
+    end
+
+    if IsValid(self.ChangeImageButton) then
+        self.ChangeImageButton:SetVisible(not readOnly)
+    end
 end
 
 function SprayPanel:HandleDrop(tableOfDroppedPanels, isDropped, menuIndex, mouseX, mouseY)
+    if self.readOnly then return end
     if not isDropped then return end
     if type(tableOfDroppedPanels) ~= "table" then return end
 
@@ -89,14 +138,32 @@ function SprayPanel:PopulateParent()
     end
 end
 
+function SprayPanel:UpdateNSFW()
+    if not IsValid(self.NSFWButton) then return end
+    self.NSFWButton:SetImage(self.tab.nsfw and "icon16/error.png" or "icon16/information.png")
+    self.NSFWButton:SetEnabled(self.tab.steamid == LocalPlayer():SteamID64())
+    self.NSFWButton:SetTooltip(self.tab.nsfw and "NSFW" or "SFW")
+end
+
 function SprayPanel:SetFavoriteTab(tab)
     self.tab = tab
     self.InnerSpray:SetFavoriteTab(tab)
 
     if IsValid(self.NSFWButton) then
-        self.NSFWButton:SetColor(self.tab.nsfw and Color(255, 255, 255, 255) or Color(255, 255, 255, 100))
-        self.NSFWButton:SetIcon(self.tab.nsfw and "icon16/exclamation.png" or "icon16/error.png")
-        self.NSFWButton:SetTooltip(self.tab.nsfw and "Marked as NSFW" or "Mark as NSFW")
+        self.NSFWButton:SetEnabled(false)
+
+        spray2.GetSprayCache(self.tab.url, self.InnerSpray.SprayCacheKey .. "2", function(data)
+            if not IsValid(self) or not data then return end
+
+            self.tab.steamid = data.steamid
+
+            if data.nsfw ~= nil then
+                self.tab.nsfw = tobool(data.nsfw)
+            end
+
+            self:UpdateNSFW()
+        end)
+        self:UpdateNSFW()
     end
 end
 
@@ -196,9 +263,6 @@ function SprayPanel:DoClick()
     end
 
     spray2.WriteFavorites()
-    if LocalPlayer().SetNetData then
-        LocalPlayer():SetNetData("sprayv2", spray2.GetCurrentSpray())
-    end
 end
 
 function SprayPanel:DoRightClick()
@@ -215,10 +279,14 @@ end
 
 function SprayPanel:GetParentSprayList()
     local parent = self:GetParent()
-    while IsValid(parent) and not parent.CreateFolderWithPanels do
+
+    while IsValid(parent) do
+        if parent.CreateFolderWithPanels then
+            return parent
+        end
+
         parent = parent:GetParent()
     end
-    return parent
 end
 
 vgui.Register("DSprayPanel", SprayPanel, "DButton")

@@ -1,48 +1,76 @@
 local spray2 = _G.spray2
-function spray2.AddSprayUI(title, text, default, callbackOK, callbackCancel, okText, cancelText)
-    okText = okText or "OK"
-    cancelText = cancelText or "Cancel"
-    local w, h = 420, 128 + 25 + 10
 
-    local frame = vgui.Create("DFrame")
-    frame:SetTitle(title)
+function spray2.AddSprayUI(parent, callbackOK, callbackCancel)
+
+    local imgSize = 128
+    local margin = 10
+    local rightX = imgSize + margin * 2
+
+    local w, h = 420, imgSize + 25 + margin
+
+    local frame = vgui.Create("DFrame", parent)
+    frame:SetTitle("Add a favorite")
     frame:SetSize(w, h)
     frame:Center()
     frame:MakePopup()
 
+
     local img = vgui.Create("DSpray", frame)
-    img:SetPos(10, 25)
-    img:SetSize(128, 128)
+    img:SetPos(margin, 25)
+    img:SetSize(imgSize, imgSize)
+
+    local y = h - 25 * 4 - margin
 
     local lbl = vgui.Create("DLabel", frame)
-    lbl:SetPos(128 + 20, h - 25 - 25 - 10 - 25)
+    lbl:SetPos(rightX, y)
     lbl:SetSize(250, 20)
-    lbl:SetText(text)
+    lbl:SetText("URL")
+
+    y = y + 25
 
     local entry = vgui.Create("DTextEntry", frame)
-    entry:SetPos(128 + 20, h - 25 - 25 - 10)
-    entry:SetSize(w - 128 - 20 - 10, 20)
-    entry:SetText(default or "")
+    entry:SetPos(rightX, y)
+    entry:SetSize(w - rightX - margin, 20)
+    entry:SetText("")
     entry:RequestFocus()
+
     entry.OnEnter = function()
         img:SetSpray(entry:GetText())
     end
 
+    y = y + 25
+
+    local nsfw = vgui.Create("DCheckBoxLabel", frame)
+    nsfw:SetPos(rightX, y)
+    nsfw:SetText("NSFW?")
+    nsfw:SetChecked(false)
+    nsfw:SizeToContents()
+
+    y = y + 25
+
     local btnOK = vgui.Create("DButton", frame)
+    btnOK:SetPos(rightX, y)
     btnOK:SetSize(100, 25)
-    btnOK:SetPos(128 + 20, h - 25 - 10)
-    btnOK:SetText(okText)
+    btnOK:SetText("Ok")
+
     btnOK.DoClick = function()
-        if callbackOK then callbackOK(entry:GetText()) end
+        if callbackOK then
+            callbackOK(entry:GetText(), nsfw:GetChecked())
+        end
+
         frame:Close()
     end
 
     local btnCancel = vgui.Create("DButton", frame)
+    btnCancel:SetPos(rightX + 110, y)
     btnCancel:SetSize(100, 25)
-    btnCancel:SetPos(310, h - 25 - 10)
-    btnCancel:SetText(cancelText)
+    btnCancel:SetText("Cancel")
+
     btnCancel.DoClick = function()
-        if callbackCancel then callbackCancel(entry:GetText()) end
+        if callbackCancel then
+            callbackCancel(entry:GetText(), nsfw:GetChecked())
+        end
+
         frame:Close()
     end
 end

@@ -2,6 +2,47 @@ local spray2 = _G.spray2
 local surface = surface
 pcall(require, "urlimage")
 
+spray2.DSprayMaterials = spray2.DSprayMaterials or {}
+local MAX_INFLIGHT = 10
+
+local imgurls = spray2.DSprayMaterials
+local q = {}
+local queued = {}
+local pending = {}
+local inflight = 0
+
+local function q_push(url)
+    if queued[url] or pending[url] then return end
+    queued[url] = true
+    table.insert(q, url)
+end
+
+local function q_pop()
+    local url = table.remove(q, 1)
+    if url then queued[url] = nil end
+    return url
+end
+
+timer.Create("DSprayMaterialQueue", 0.25, 0, function()
+    for url, mat in pairs(pending) do
+        local w, h = mat()
+        if (w and h) or (w == false) then
+            pending[url] = nil
+            inflight = math.max(0, inflight - 1)
+        end
+    end
+
+    while inflight < MAX_INFLIGHT and #q > 0 do
+        local url = q_pop()
+        if url and not imgurls[url] and not pending[url] then
+            local mat = surface.URLImage(url)
+            imgurls[url] = mat
+            pending[url] = mat
+            inflight = inflight + 1
+        end
+    end
+end)
+
 local Spray = {}
 function Spray:Init()
     self:SetText("")
@@ -14,15 +55,31 @@ function Spray:SetFavoriteTab(tab)
     self.tab = tab
 end
 
-local imgurls = {}
 function Spray:SetSpray(str)
     self.SprayURL = str
+    self.Mat = nil
     spray2.GetSprayCache(str, self.SprayCacheKey, function(data)
         if IsValid(self) then
-            imgurls[data["url"]] = imgurls[data["url"]] or surface.URLImage(data["url"])
-            self.Mat = imgurls[data["url"]]
+            self.RealSprayURL = data["url"]
+
+            local url = self.RealSprayURL
+            local cached = imgurls[url]
+            if cached then
+                self.Mat = cached
+            else
+                self.Mat = function()
+                    local m = imgurls[url]
+                    if not m then return nil end
+                    return m()
+                end
+                q_push(url)
+            end
         end
     end)
+end
+
+function Spray:MakeFolder()
+    self.IsFolder = true
 end
 
 function Spray:Paint(pw, ph)

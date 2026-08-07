@@ -1,6 +1,7 @@
 local spray2 = _G.spray2
 local surface = surface
 local cam = cam
+local URLS, STATUS, STATUS_NAME = spray2.URLS, spray2.STATUS, spray2.STATUS_NAME
 
 local sprayButtons = {
     {
@@ -74,13 +75,18 @@ local sprayButtons = {
         click = function(tbl)
             local ply = LocalPlayer()
             spray2.SprayReportUI(
-                "Are you sure you want to report this spray?",
-                "Insert reason",
                 tbl.material,
-                "",
                 function(reason)
-                    local function postReport()
-                        if not spray2.IsTokenValid() then return end
+                    local postReport postReport = function()
+                        local function PushForToken()
+                            spray2.PushForTokenWaiting("reportRequestToken", postReport)
+                            spray2.RequestToken()
+                        end
+
+                        if not spray2.IsTokenValid() then
+                            return PushForToken()
+                        end
+
                         local postData = {
                             url = tbl.material,
                             token = spray2.GetToken(),
@@ -113,33 +119,39 @@ local sprayButtons = {
                                 end
 
                                 local resp = util.JSONToTable(body)
-                                if resp and resp.status == STATUS.SUCCESS then
-                                    ply:ChatPrint("Spray reported, thank you!")
+                                if resp and resp.status then
+                                    local status = tonumber(resp.status)
+                                    if status == STATUS.REQUIRES_TOKEN then
+                                        PushForToken()
+                                        return
+                                    elseif status == STATUS.SUCCESS then
+                                        ply:ChatPrint("Spray reported, thank you!")
+                                    else
+                                        ply:ChatPrint(string.format("Failed to report spray (%s): %s",
+                                            STATUS_NAME[status] or status,
+                                            resp.status_text or "Unknown error"
+                                        ))
+                                    end
                                 else
-                                    ply:ChatPrint("Failed to report spray: " .. (resp and resp.status_text or "Unknown error"))
+                                    ply:ChatPrint("Failed to report spray: Invalid response")
                                 end
                             end,
                             failed = function(err)
-                                ply:ChatPrint("Failed to report spray, backend error: " .. tostring(err))
+                                ply:ChatPrint(string.format("Failed to report spray, backend error: %s",
+                                    tostring(err)
+                                ))
                             end
                         })
                     end
+
                     if not reason or reason:Trim() == "" then
                         ply:ChatPrint("You must provide a reason to report this spray.")
                         return
                     end
 
-                    if not spray2.IsTokenValid() then
-                        spray2.PushForTokenWaiting("reportRequestToken", postReport)
-                        spray2.RequestToken()
-                        return
-                    end
-
                     postReport()
                 end,
-                function() end,
-                "Yes",
-                "Cancel"
+                function() end
             )
         end
     }

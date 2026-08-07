@@ -50,8 +50,9 @@ function DFavoritePanel:Init()
     self.AddFavorite:Dock(BOTTOM)
     self.AddFavorite:SetText("Add Favorite")
     function self.AddFavorite.DoClick(_self)
-        spray2.AddSprayUI("Add a favorite", "URL", "", function(text)
-            self:AddSpray{url = text, nsfw = false}
+        spray2.AddSprayUI(self, function(text, nsfw)
+            if not IsValid(self) then return end
+            self:AddSpray{url = text, nsfw = nsfw}
         end)
     end
 
@@ -70,6 +71,25 @@ function DFavoritePanel:Init()
 
     self.previousFolderStack = {}
     self.currentFolder = nil
+    self.readOnly = false
+    self.dontHideDelete = false
+    self.favorites = true
+end
+
+function DFavoritePanel:SetReadOnly(readOnly, dontHideDelete)
+    self.readOnly = readOnly
+    self.dontHideDelete = dontHideDelete
+    self.AddFavorite:SetVisible(not readOnly)
+    self.SaveSpray:SetVisible(not readOnly)
+    self.ClearSpray:SetVisible(not readOnly)
+    self.SprayRoulette:SetVisible(not readOnly)
+
+    self.favorites = false
+end
+
+-- Check if the spray panel is actually tied to a favorites table
+function DFavoritePanel:IsFavorites()
+    return self.favorites
 end
 
 function DFavoritePanel:OnClose()
@@ -109,6 +129,7 @@ function DFavoritePanel:Populate()
     local sizeMul = self.Scale:GetValue()
     local function AddButton(v, folder, tab)
         local SprayPan = vgui.Create("DSprayPanel", self.List)
+        SprayPan:SetReadOnly(self.readOnly, self.dontHideDelete)
         SprayPan:SetSize(128 / sizeMul, 128 / sizeMul)
         SprayPan:SetSpray(v.url or "https://raw.githubusercontent.com/Xerasin/Sprayv2/master/files/folder_forward.png")
         SprayPan:SetFavoriteTab(v)
@@ -119,8 +140,7 @@ function DFavoritePanel:Populate()
     end
 
     local files, folders = {}, {}
-    for k,v in pairs(self.currentFolder) do
-        if not tonumber(k) then continue end
+    for _, v in ipairs(self.currentFolder) do
         if v.isFolder or (v.name and v.name ~= "") then
             table.insert(folders, v)
         elseif v.url and v.url ~= "" then
@@ -141,6 +161,7 @@ function DFavoritePanel:Populate()
         local prevFolder = self.previousFolderStack[#self.previousFolderStack]
 
         local SprayPan = vgui.Create("DSprayPanel", self.List)
+        SprayPan:SetReadOnly(self.readOnly)
         SprayPan:SetSize(128 / sizeMul, 128 / sizeMul)
         SprayPan:SetSpray(backTabDisplay.url)
         SprayPan:SetFavoriteTab(backTabDisplay)
@@ -169,11 +190,11 @@ function DFavoritePanel:Populate()
         self.List:Add(SprayPan)
     end
 
-    for k,v in pairs(folders) do
+    for _, v in ipairs(folders) do
         AddButton(v, true)
     end
 
-    for k,v in pairs(files) do
+    for _, v in ipairs(files) do
         AddButton(v)
     end
 
@@ -183,6 +204,7 @@ end
 
 function DFavoritePanel:PopFolder()
     if not self.currentFolder then return end
+    if #self.previousFolderStack == 0 then return end
 
     self.currentFolder = table.remove(
         self.previousFolderStack,
@@ -198,6 +220,10 @@ function DFavoritePanel:PushFolder(folder)
     self:Populate()
 end
 
+function DFavoritePanel:OnChanged()
+    -- Override me
+end
+
 function DFavoritePanel:SetCurrentFolder(folder)
     self.currentFolder = folder
     self:Populate()
@@ -207,21 +233,28 @@ function DFavoritePanel:GetLastFolder()
     return self.previousFolderStack[#self.previousFolderStack]
 end
 
+local AddSpray AddSpray = function(currentFolder, newSpray, onSuccess)
+    local function PushForToken()
+        spray2.PushForTokenWaiting("lastAddRequestToken",
+            AddSpray,
+            currentFolder,
+            newSpray,
+            onSuccess
+        )
 
-function DFavoritePanel:AddSpray(tbl)
-    if not tbl or tbl.url == "" then return end
-
-    for k, v in pairs(self.currentFolder) do
-        if tonumber(k) and v.url == tbl.url then
-            return
-        end
+        spray2.RequestToken()
     end
+
 
     if not spray2.IsTokenValid() then
-        return spray2.RequestToken()
+        return PushForToken()
     end
 
-    http.Post(URLS.SPRAYADD, {["url"] = tbl.url, ["token"] = spray2.GetToken()}, function(data, _, _, code)
+    http.Post(URLS.SPRAYADD, {
+            ["url"] = newSpray.url,
+            ["nsfw"] = newSpray.nsfw and "1" or "0",
+            ["token"] = spray2.GetToken()
+        }, function(data, _, _, code)
         local sprayData = util.JSONToTable(data)
         if code ~= 200 or not sprayData then return end
 
@@ -229,21 +262,41 @@ function DFavoritePanel:AddSpray(tbl)
         sprayData.status = status
 
         if status >= 0 then
-            table.insert(self.currentFolder, tbl)
-            spray2.WriteFavorites()
-            self:Populate()
-
+            table.insert(currentFolder, {url = newSpray.url})
+            if onSuccess then
+                onSuccess()
+            end
         elseif status == STATUS.REQUIRES_TOKEN then
-            spray2.PushForTokenWaiting("lastAddRequestToken", self.AddSpray, self, tbl)
-            spray2.RequestToken()
+            PushForToken()
         else
             LocalPlayer():ChatPrint(string.format(
                 "Cannot process %s (%s): %s",
-                tbl.url,
+                newSpray.url,
                 STATUS_NAME[status] or status,
                 sprayData.status_text or "Unknown error"
             ))
         end
+    end)
+end
+
+function DFavoritePanel:AddSpray(newSpray)
+    if self.readOnly then return end
+    if not newSpray or newSpray.url == "" then return end
+    if not self.currentFolder then return end
+
+    local currentFolder = self.currentFolder
+    for _, v in ipairs(currentFolder) do
+        if v.url == newSpray.url then
+            return
+        end
+    end
+    local onChanged = self.OnChanged
+
+    AddSpray(currentFolder, newSpray, function()
+        if not IsValid(self) then return end
+
+        self:Populate()
+        onChanged(self)
     end)
 end
 
@@ -262,6 +315,9 @@ local function IsDescendant(folder, candidate)
 end
 
 function DFavoritePanel:CreateFolderWithPanels(folderName, tableOfDroppedPanels, otherPanel)
+    if self.readOnly then return end
+    if not self.currentFolder then return end
+
     local newFolder = {
         isFolder = true,
         name = folderName,
@@ -306,11 +362,13 @@ function DFavoritePanel:CreateFolderWithPanels(folderName, tableOfDroppedPanels,
 
     table.insert(self.currentFolder, newFolder)
 
-    spray2.WriteFavorites()
+    self:OnChanged()
     self:Populate()
 end
 
 function DFavoritePanel:MoveSpraysToFolder(droppedOnFolder, droppedPanels)
+    if self.readOnly then return end
+    if not self.currentFolder then return end
     if not droppedOnFolder then return end
 
     local target = droppedOnFolder.contents or droppedOnFolder
@@ -344,11 +402,12 @@ function DFavoritePanel:MoveSpraysToFolder(droppedOnFolder, droppedPanels)
         table.remove(self.currentFolder, idx)
     end
 
-    spray2.WriteFavorites()
+    self:OnChanged()
     self:Populate()
 end
 
 function DFavoritePanel:DeleteSpray(tab)
+    if self.readOnly then return end
     if not tab or not self.currentFolder then return end
     if tab.IsBack then return end
 
@@ -371,7 +430,7 @@ function DFavoritePanel:DeleteSpray(tab)
     end
 
     table.remove(self.currentFolder, sprayIndex)
-    spray2.WriteFavorites()
+    self:OnChanged()
     self:Populate()
 end
 

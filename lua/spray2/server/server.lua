@@ -21,9 +21,31 @@ hook.Add("NetData", "sprayv2", function(pl, key, value)
     end
 end)
 
+local STEAMID_PATTERN = "STEAM_0:%d:%d+"
+local STEAMID64_PATTERN = "^7656119%d+$"
 local function addcmd()
-    aowl.AddCommand({"spraymenu", "sprays", "spray", "sprayv2"}, function(ply, line)
-        ply:ConCommand("sprayv2_openfavorites")
+    aowl.AddCommand({"spraymenu", "sprays", "spray", "sprayv2"}, function(ply, line, target)
+        if target then
+            if string.match(target, STEAMID64_PATTERN) then
+                ply:ConCommand("sprayv2_viewsprays " .. target)
+                return
+            end
+
+            if string.match(target, STEAMID_PATTERN) then
+                local steamID64 = util.SteamIDTo64(target)
+                if steamID64 then
+                    ply:ConCommand("sprayv2_viewsprays " .. steamID64)
+                end
+                return
+            end
+
+            local targetPly = easylua.FindEntity(target)
+            if IsValid(targetPly) and targetPly:IsPlayer() then
+                ply:ConCommand("sprayv2_viewsprays " .. targetPly:SteamID64())
+            end
+        else
+            ply:ConCommand("sprayv2_openfavorites")
+        end
     end)
 
     aowl.AddCommand("clearspray2", function(ply, line, target)
